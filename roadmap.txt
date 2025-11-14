@@ -1,0 +1,32 @@
+Detailed plan for the structure and style of the Vinyl Beats Radio website
+
+1. Design objectives
+- Create a clean, intuitive and modern user experience that reflects the identity of Vinyl Beats Radio.
+- Prioritize ease of navigation and accessibility.
+- Incorporate a minimalist design with modern touches, inspired by bento/apple aesthetics: use of white space, clear typography and simple but elegant visual elements.
+- Ensure the site is responsive, adapting well to mobile and desktop devices.
+
+2. Basic file structure
+- index.html: Main page that will serve as the entry point to the site.
+- styles.css: Main stylesheet that will define the general aesthetics, including fonts, colors, and layout.
+- scripts.js: JavaScript file for interactive features, such as the audio player and dynamic programming.
+- assets/: Folder for static resources such as images, icons and multimedia files.
+- README.md: Basic project documentation.
+
+3. Key sections of the site
+- Home: Brief presentation of Vinyl Beats Radio, with an attractive design that invites listening to the radio.
+- Player: Integration of a simple and accessible audio player, with basic controls (play, pause, volume).
+- Schedule: Listing of programs and schedules, with a brief description of each.
+- News or Blog (optional): Space for news and content related to the radio.
+- Contact: Form or information for users to contact the team.
+- Footer: Legal information, links to social networks and other resources.
+
+4. Aesthetic direction
+- Neutral and soft color palette, with accents in vibrant tones to highlight important elements.
+- Clean and readable sans-serif typography.
+- Use of white space to avoid visual saturation.
+- Modular bento-style design with well-defined and ordered blocks.
+- Subtle animations to enhance the experience without distracting.
+- Simple and modern icons that complement the content.
+
+This roadmap will serve as the basis for the initial development of the Vinyl Beats Radio website, ensuring a clear focus on usability and visual style consistent with the brand identity.
