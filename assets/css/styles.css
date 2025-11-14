@@ -135,6 +135,54 @@ body {
   gap: 1rem;
 }
 
+.quality-toggle-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.quality-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.quality-toggle {
+  background: var(--card-bg);
+  border: 1px solid var(--station-border);
+  border-radius: 20px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: var(--shadow);
+  font-family: 'Clash Grotesk', sans-serif;
+}
+
+.quality-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--accent);
+}
+
+.quality-toggle:active {
+  transform: translateY(0);
+}
+
+.quality-value {
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.quality-unit {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 .theme-toggle {
   background: var(--card-bg);
   border: 1px solid var(--station-border);
@@ -211,11 +259,11 @@ body {
 /* STATIONS SELECTOR */
 .stations {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
   width: 100%;
-  max-width: 600px;
-  margin-bottom: 3rem;
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
 .station-btn {
@@ -356,28 +404,86 @@ body {
   margin: 0 auto;
   padding: 1rem 1.5rem;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 1rem;
   align-items: center;
 }
 
-.fixed-player-info {
+/* Player Artwork */
+.player-artwork {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow);
+}
+
+.artwork-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+}
+
+.artwork-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+  color: #ffffff;
+}
+
+/* Player Track Info */
+.player-track-info {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 0.25rem;
-  width: 100%;
+}
+
+.track-name-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
 .current-station {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: var(--text);
+  transition: color 0.3s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-name {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: color 0.3s ease;
 }
 
+.player-status-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
 .player-status {
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -402,10 +508,11 @@ body {
 }
 
 .fixed-player-controls {
-  width: 100%;
-  max-width: 600px;
+  flex: 1;
+  max-width: 500px;
   display: flex;
   justify-content: center;
+  min-width: 0;
 }
 
 .fixed-player-controls audio {
@@ -459,6 +566,27 @@ body {
     font-size: 1.4rem;
   }
 
+  .quality-toggle-container {
+    gap: 0.4rem;
+  }
+
+  .quality-label {
+    font-size: 0.75rem;
+    display: none; /* Hide label on mobile */
+  }
+
+  .quality-toggle {
+    padding: 0.35rem 0.75rem;
+  }
+
+  .quality-value {
+    font-size: 0.85rem;
+  }
+
+  .quality-unit {
+    font-size: 0.7rem;
+  }
+
   .section {
     padding: 1.5rem 1rem;
   }
@@ -509,7 +637,32 @@ body {
   }
 
   .fixed-player-content {
+    flex-direction: column;
     padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .player-artwork {
+    width: 50px;
+    height: 50px;
+  }
+
+  .player-track-info {
+    width: 100%;
+    text-align: center;
+  }
+
+  .track-name-container {
+    align-items: center;
+  }
+
+  .player-status-container {
+    align-items: center;
+  }
+
+  .fixed-player-controls {
+    width: 100%;
+    max-width: 100%;
   }
 
   .fixed-player-controls audio {
@@ -528,6 +681,28 @@ body {
 
   .logo {
     font-size: 1.2rem;
+  }
+
+  .header-controls {
+    gap: 0.5rem;
+  }
+
+  .quality-toggle {
+    padding: 0.3rem 0.6rem;
+  }
+
+  .quality-value {
+    font-size: 0.8rem;
+  }
+
+  .quality-unit {
+    font-size: 0.65rem;
+  }
+
+  .theme-toggle {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
   }
 
   .hero-card {
@@ -558,6 +733,31 @@ body {
   .stations {
     grid-template-columns: 1fr;
     gap: 0.75rem;
+  }
+
+  .fixed-player-content {
+    padding: 0.75rem;
+  }
+
+  .player-artwork {
+    width: 45px;
+    height: 45px;
+  }
+
+  .artwork-placeholder {
+    font-size: 1.5rem;
+  }
+
+  .current-station {
+    font-size: 0.85rem;
+  }
+
+  .track-name {
+    font-size: 0.75rem;
+  }
+
+  .player-status {
+    font-size: 0.65rem;
   }
 
   .station-btn {

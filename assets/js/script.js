@@ -21,16 +21,78 @@ document.addEventListener('DOMContentLoaded', () => {
     updateThemeIcon(newTheme);
   });
 
-  // Keyboard navigation support
-  themeToggle.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      themeToggle.click();
+  function updateThemeIcon(theme) {
+    themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+  }
+
+  // Quality management
+  const qualityToggle = document.getElementById('qualityToggle');
+  const qualityValue = document.getElementById('qualityValue');
+  let currentQuality = parseInt(localStorage.getItem('audioQuality')) || 320; // Default to 320 kbps
+  
+  // Update quality display
+  function updateQualityDisplay() {
+    qualityValue.textContent = currentQuality;
+    localStorage.setItem('audioQuality', currentQuality.toString());
+  }
+  
+  // Initialize quality display
+  updateQualityDisplay();
+  
+  // Quality toggle handler
+  qualityToggle.addEventListener('click', () => {
+    currentQuality = currentQuality === 320 ? 192 : 320;
+    updateQualityDisplay();
+    
+    // If a station is currently playing, switch to new quality
+    if (currentStation && audioPlayer.src) {
+      switchStation(currentStation, true);
     }
   });
 
-  function updateThemeIcon(theme) {
-    themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+  // Build stream URL
+  function buildStreamUrl(baseUrl, quality) {
+    return `${baseUrl}/${quality}.mp3`;
+  }
+
+  // Test if stream URL is accessible
+  async function testStreamUrl(url) {
+    return new Promise((resolve) => {
+      const testAudio = new Audio();
+      let resolved = false;
+      
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          testAudio.src = '';
+          console.warn(`⏱️ Timeout testing stream: ${url}`);
+          resolve(false);
+        }
+      }, 5000); // 5 second timeout
+      
+      testAudio.addEventListener('canplay', () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          testAudio.src = '';
+          console.log(`✅ Stream is accessible: ${url}`);
+          resolve(true);
+        }
+      });
+      
+      testAudio.addEventListener('error', () => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          testAudio.src = '';
+          console.warn(`❌ Stream not accessible: ${url}`);
+          resolve(false);
+        }
+      });
+      
+      testAudio.src = url;
+      testAudio.load();
+    });
   }
 
   // Fade-in effect on page load
@@ -42,12 +104,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const stationButtons = document.querySelectorAll('.station-btn');
   const audioPlayer = document.getElementById('audioPlayer');
   const currentStationDisplay = document.getElementById('currentStation');
+  const trackNameDisplay = document.getElementById('trackName');
   const playerStatusDisplay = document.getElementById('playerStatus');
   const streamStatusDisplay = document.getElementById('streamStatus');
+  const trackArtwork = document.getElementById('trackArtwork');
+  const artworkPlaceholder = document.getElementById('artworkPlaceholder');
+  
   let currentStation = null;
+  let currentBaseUrl = null;
   let reconnectAttempts = 0;
   const MAX_RECONNECT_ATTEMPTS = 5;
   let reconnectTimeout = null;
+  let trackInfoInterval = null;
 
   // Update player display
   function updatePlayerDisplay(stationName, status, streamInfo = '') {
@@ -63,75 +131,175 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Check stream availability
-  async function checkStreamAvailability(url) {
-    try {
-      const response = await fetch(url, { method: 'HEAD', mode: 'no-cors' });
-      return true;
-    } catch (error) {
-      // Try with a timeout
-      return new Promise((resolve) => {
-        const audio = new Audio();
-        let resolved = false;
-        
-        const timeout = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            audio.src = '';
-            resolve(false);
-          }
-        }, 3000);
-
-        audio.addEventListener('canplay', () => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            audio.src = '';
-            resolve(true);
-          }
-        });
-
-        audio.addEventListener('error', () => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            resolve(false);
-          }
-        });
-
-        audio.src = url;
-      });
+  // Update track info (placeholder - will need Icecast API integration)
+  function updateTrackInfo(stationName) {
+    // TODO: Fetch track info from Icecast API
+    // For now, show placeholder
+    if (trackNameDisplay) {
+      trackNameDisplay.textContent = 'Now playing on ' + stationName;
     }
-  }
-
-  // Handle stream errors with better UX
-  function handleStreamError(stationName, url) {
-    reconnectAttempts++;
     
-    if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
-      updatePlayerDisplay(stationName, 'Reconnecting...', `Intento ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
-      
-      reconnectTimeout = setTimeout(async () => {
-        const isAvailable = await checkStreamAvailability(url);
-        
-        if (isAvailable) {
-          reconnectAttempts = 0;
-          audioPlayer.load();
-          audioPlayer.play().catch(() => {
-            updatePlayerDisplay(stationName, 'Paused', 'Stream disponible - Haz clic en play');
-          });
-        } else {
-          handleStreamError(stationName, url);
-        }
-      }, 3000 * reconnectAttempts); // Exponential backoff
-    } else {
-      reconnectAttempts = 0;
-      updatePlayerDisplay(stationName, 'Offline', 'Stream no disponible. La emisora estará disponible pronto.');
+    // TODO: Fetch artwork from API or metadata
+    // For now, show placeholder
+    if (artworkPlaceholder) {
+      artworkPlaceholder.style.display = 'flex';
+    }
+    if (trackArtwork) {
+      trackArtwork.style.display = 'none';
     }
   }
 
+  // Fetch track info from Icecast (if available)
+  async function fetchTrackInfo(baseUrl) {
+    try {
+      // Try to fetch from Icecast status JSON
+      // This is a common endpoint for Icecast servers
+      const statusUrl = baseUrl.replace('/192.mp3', '').replace('/320.mp3', '') + '/status-json.xsl';
+      
+      const response = await fetch(statusUrl);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.icestats && data.icestats.source) {
+          const source = Array.isArray(data.icestats.source) 
+            ? data.icestats.source[0] 
+            : data.icestats.source;
+          
+          if (source.yp_currently_playing) {
+            return {
+              title: source.yp_currently_playing,
+              artwork: null // Icecast doesn't typically provide artwork
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.log('Track info not available:', error);
+    }
+    return null;
+  }
+
+  // Switch station
+  function switchStation(stationId, keepPlaying = false) {
+    const button = document.querySelector(`[data-station="${stationId}"]`);
+    if (!button) {
+      console.error('Station button not found:', stationId);
+      return;
+    }
+    
+    const baseUrl = button.getAttribute('data-base-url');
+    const stationName = button.querySelector('.station-name').textContent;
+    const streamUrl = buildStreamUrl(baseUrl, currentQuality);
+    
+    console.log(`🔄 Switching to ${stationName}`);
+    console.log(`📍 Base URL: ${baseUrl}`);
+    console.log(`🎵 Stream URL: ${streamUrl}`);
+    console.log(`📊 Quality: ${currentQuality} kbps`);
+    
+    const wasPlaying = !audioPlayer.paused && keepPlaying;
+    reconnectAttempts = 0;
+    
+    // Clear any pending reconnection
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+    
+    // Stop current playback
+    audioPlayer.pause();
+    audioPlayer.src = '';
+    
+    // Update active state
+    stationButtons.forEach(btn => btn.classList.remove('active'));
+    button.classList.add('active');
+    
+    // Update display
+    updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
+    updateTrackInfo(stationName);
+    
+    // Set new source
+    currentStation = stationId;
+    currentBaseUrl = baseUrl;
+    
+    // Test stream accessibility first
+    console.log(`🧪 Testing stream accessibility: ${streamUrl}`);
+    updatePlayerDisplay(stationName, 'Checking...', 'Verifying stream availability...');
+    
+    testStreamUrl(streamUrl).then(isAccessible => {
+      if (!isAccessible) {
+        console.error(`❌ Stream not accessible: ${streamUrl}`);
+        updatePlayerDisplay(stationName, 'Unavailable', 'Stream not accessible. Check server or try different quality.');
+        console.warn('💡 Tips:');
+        console.warn('   1. Verify the stream is running on the server');
+        console.warn('   2. Check if CORS is enabled on the server');
+        console.warn('   3. Try opening the URL directly in browser:', streamUrl);
+        console.warn('   4. Check if port 8000 is accessible');
+        return;
+      }
+      
+      // Load new stream
+      console.log(`🔗 Setting audio source to: ${streamUrl}`);
+      audioPlayer.src = streamUrl;
+      
+      // Wait a bit before loading to ensure source is set
+      setTimeout(() => {
+        console.log(`📥 Loading audio element...`);
+        audioPlayer.load();
+        
+        // Try to play if was playing before
+        if (wasPlaying) {
+          setTimeout(() => {
+            console.log(`▶️ Attempting to play...`);
+            audioPlayer.play().catch(err => {
+              console.warn('⚠️ Auto-play prevented:', err.name, err.message);
+              updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+            });
+          }, 100);
+        } else {
+          updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
+          console.log(`⏸️ Stream loaded, waiting for user to click play`);
+        }
+      }, 50);
+    });
+    
+    // Try to fetch track info
+    fetchTrackInfo(baseUrl).then(info => {
+      if (info && info.title) {
+        if (trackNameDisplay) {
+          trackNameDisplay.textContent = info.title;
+        }
+      } else {
+        if (trackNameDisplay) {
+          trackNameDisplay.textContent = `Now playing on ${stationName}`;
+        }
+      }
+    }).catch(err => {
+      console.log('Track info not available:', err);
+      if (trackNameDisplay) {
+        trackNameDisplay.textContent = `Now playing on ${stationName}`;
+      }
+    });
+    
+    // Start periodic track info updates
+    if (trackInfoInterval) {
+      clearInterval(trackInfoInterval);
+    }
+    trackInfoInterval = setInterval(() => {
+      if (currentBaseUrl) {
+        fetchTrackInfo(currentBaseUrl).then(info => {
+          if (info && info.title && trackNameDisplay) {
+            trackNameDisplay.textContent = info.title;
+          }
+        }).catch(() => {
+          // Silently fail - track info is optional
+        });
+      }
+    }, 10000); // Update every 10 seconds
+    
+    console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
+  }
+
+  // Station button handlers
   stationButtons.forEach(button => {
-    // Keyboard navigation support
     button.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -139,164 +307,175 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    button.addEventListener('click', async () => {
-      const stationUrl = button.getAttribute('data-url');
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
       const stationId = button.getAttribute('data-station');
       const stationName = button.querySelector('.station-name').textContent;
-
-      // Update active state
-      stationButtons.forEach(btn => btn.classList.remove('active'));
-      button.classList.add('active');
-
-      // Change audio source if different station
-      if (currentStation !== stationId) {
-        const wasPlaying = !audioPlayer.paused;
-        reconnectAttempts = 0;
-        
-        // Clear any pending reconnection
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-          reconnectTimeout = null;
-        }
-        
-        // Check stream availability before switching
-        updatePlayerDisplay(stationName, 'Loading...', 'Verificando disponibilidad...');
-        
-        const isAvailable = await checkStreamAvailability(stationUrl);
-        
-        if (isAvailable) {
-          audioPlayer.src = stationUrl;
-          audioPlayer.load();
-          updatePlayerDisplay(stationName, wasPlaying ? 'Playing' : 'Paused', '');
-          
-          if (wasPlaying) {
-            audioPlayer.play().catch(err => {
-              console.warn('Auto-play prevented:', err);
-              updatePlayerDisplay(stationName, 'Paused', 'Haz clic en play para escuchar');
-            });
-          }
-        } else {
-          updatePlayerDisplay(stationName, 'Offline', 'Stream no disponible. La emisora estará disponible pronto.');
-          audioPlayer.src = '';
-        }
-        
-        currentStation = stationId;
-        console.log(`🎵 Switched to ${stationName} - Available: ${isAvailable}`);
+      
+      console.log(`🖱️ Click detected on: ${stationName} (ID: ${stationId})`);
+      
+      if (!stationId) {
+        console.error('❌ No station ID found on button');
+        return;
       }
+      
+      switchStation(stationId, false);
     });
   });
 
-  // Set initial station
+  // Set initial station (but don't load stream automatically)
   const initialStation = document.querySelector('.station-btn.active');
   if (initialStation) {
-    currentStation = initialStation.getAttribute('data-station');
+    const stationId = initialStation.getAttribute('data-station');
     const stationName = initialStation.querySelector('.station-name').textContent;
-    const stationUrl = initialStation.getAttribute('data-url');
+    currentStation = stationId;
+    currentBaseUrl = initialStation.getAttribute('data-base-url');
     
-    // Don't load stream automatically - wait for user interaction
-    updatePlayerDisplay(stationName, 'Ready', 'Haz clic en play cuando la emisora esté disponible');
+    console.log(`🎯 Initial station: ${stationName} (ID: ${stationId})`);
+    updatePlayerDisplay(stationName, 'Ready', 'Select a station and click play');
     
-    // Optional: Check availability on load (commented to avoid unnecessary requests)
-    // checkStreamAvailability(stationUrl).then(isAvailable => {
-    //   if (isAvailable) {
-    //     audioPlayer.src = stationUrl;
-    //     updatePlayerDisplay(stationName, 'Ready', '');
-    //   } else {
-    //     updatePlayerDisplay(stationName, 'Offline', 'La emisora estará disponible pronto');
-    //   }
-    // });
+    // Don't load stream automatically - wait for user to click play
+    // This avoids timeout errors on page load
   }
 
   // Network status monitoring
   window.addEventListener('online', () => {
-    console.log('✅ Conexión restaurada');
-    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Station 01';
-    updatePlayerDisplay(stationName, playerStatusDisplay.textContent, 'Conexión restaurada');
+    console.log('✅ Connection restored');
+    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+    updatePlayerDisplay(stationName, playerStatusDisplay.textContent, 'Connection restored');
   });
 
   window.addEventListener('offline', () => {
-    console.warn('⚠️ Sin conexión');
-    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Station 01';
-    updatePlayerDisplay(stationName, 'Offline', 'Sin conexión a internet');
+    console.warn('⚠️ No connection');
+    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+    updatePlayerDisplay(stationName, 'Offline', 'No internet connection');
   });
 
   // Player control
   if (audioPlayer) {
     audioPlayer.addEventListener('play', () => {
       console.log('🎵 Playback started');
-      updatePlayerDisplay(
-        currentStationDisplay ? currentStationDisplay.textContent : 'Station 01',
-        'Playing'
-      );
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+      updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
     });
 
     audioPlayer.addEventListener('pause', () => {
       console.log('⏸️ Playback paused');
-      updatePlayerDisplay(
-        currentStationDisplay ? currentStationDisplay.textContent : 'Station 01',
-        'Paused'
-      );
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+      updatePlayerDisplay(stationName, 'Paused', '');
     });
 
     audioPlayer.addEventListener('playing', () => {
-      updatePlayerDisplay(
-        currentStationDisplay ? currentStationDisplay.textContent : 'Station 01',
-        'Playing'
-      );
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+      updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
     });
 
-    // Handle stream errors with better UX
     audioPlayer.addEventListener('error', (e) => {
       const error = audioPlayer.error;
-      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Station 01';
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       const currentUrl = audioPlayer.src;
       
-      console.warn('⚠️ Stream error:', error ? error.code : 'Unknown error');
+      console.error('❌ Stream error detected');
+      console.error('Error code:', error ? error.code : 'Unknown');
+      console.error('Error message:', error ? error.message : 'No error object');
+      console.error('Current URL:', currentUrl);
+      console.error('Network state:', audioPlayer.networkState);
+      console.error('Ready state:', audioPlayer.readyState);
       
       if (error) {
+        let errorMessage = '';
         switch(error.code) {
           case MediaError.MEDIA_ERR_ABORTED:
-            updatePlayerDisplay(stationName, 'Aborted', 'Conexión cancelada');
+            errorMessage = 'Connection cancelled';
+            updatePlayerDisplay(stationName, 'Aborted', errorMessage);
+            console.warn('⚠️ Media error: Aborted');
             break;
           case MediaError.MEDIA_ERR_NETWORK:
-            updatePlayerDisplay(stationName, 'Network Error', 'Error de red. Verificando...');
-            if (currentUrl) handleStreamError(stationName, currentUrl);
+            errorMessage = 'Network error - Check CORS or connection';
+            updatePlayerDisplay(stationName, 'Network Error', errorMessage);
+            console.warn('⚠️ Media error: Network');
+            console.warn('💡 Tip: Check if server allows CORS or if stream is accessible');
+            if (currentUrl) {
+              reconnectAttempts++;
+              if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+                console.log(`🔄 Retry attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+                reconnectTimeout = setTimeout(() => {
+                  audioPlayer.load();
+                  audioPlayer.play().catch(() => {
+                    updatePlayerDisplay(stationName, 'Ready', 'Click play to retry');
+                  });
+                }, 3000);
+              } else {
+                console.error('❌ Max reconnection attempts reached');
+                updatePlayerDisplay(stationName, 'Error', 'Stream unavailable - Check server');
+              }
+            }
             break;
           case MediaError.MEDIA_ERR_DECODE:
-            updatePlayerDisplay(stationName, 'Decode Error', 'Error al decodificar el stream');
+            errorMessage = 'Error decoding stream - Invalid format';
+            updatePlayerDisplay(stationName, 'Decode Error', errorMessage);
+            console.warn('⚠️ Media error: Decode');
             break;
           case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-            updatePlayerDisplay(stationName, 'Not Supported', 'Formato no soportado o stream no disponible');
+            errorMessage = 'Stream unavailable or format not supported';
+            updatePlayerDisplay(stationName, 'Unavailable', errorMessage);
+            console.warn('⚠️ Media error: Source not supported (Code 4)');
+            console.warn('💡 Possible causes:');
+            console.warn('   1. Stream is not running on the server');
+            console.warn('   2. CORS is not enabled (server must allow cross-origin requests)');
+            console.warn('   3. URL is incorrect or server is not accessible');
+            console.warn('   4. Port 8000 is blocked or not accessible');
+            console.warn(`📋 Test URL directly: ${currentUrl}`);
+            console.warn('🔧 Server should have CORS headers:');
+            console.warn('   Access-Control-Allow-Origin: *');
+            console.warn('   Access-Control-Allow-Methods: GET, POST, OPTIONS');
             break;
           default:
-            updatePlayerDisplay(stationName, 'Error', 'Error desconocido. La emisora estará disponible pronto.');
-            if (currentUrl) handleStreamError(stationName, currentUrl);
+            errorMessage = 'Unknown error - Check console for details';
+            updatePlayerDisplay(stationName, 'Error', errorMessage);
+            console.warn('⚠️ Media error: Unknown');
         }
       } else {
-        updatePlayerDisplay(stationName, 'Error', 'Error al conectar. La emisora estará disponible pronto.');
-        if (currentUrl) handleStreamError(stationName, currentUrl);
+        console.warn('⚠️ Error event fired but no error object');
+        updatePlayerDisplay(stationName, 'Error', 'Stream error - Check console');
       }
     });
 
-    // Handle stalled stream
     audioPlayer.addEventListener('stalled', () => {
       console.warn('⚠️ Stream stalled');
-      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Station 01';
-      updatePlayerDisplay(stationName, 'Buffering...', 'Cargando stream...');
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+      updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
     });
 
-    // Handle waiting/buffering
     audioPlayer.addEventListener('waiting', () => {
-      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Station 01';
-      updatePlayerDisplay(stationName, 'Buffering...', 'Cargando stream...');
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+      updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
     });
 
-    // Handle canplay - stream is ready
+    audioPlayer.addEventListener('loadstart', () => {
+      console.log('📡 Loading stream...');
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+      updatePlayerDisplay(stationName, 'Loading...', 'Connecting to stream...');
+    });
+
+    audioPlayer.addEventListener('loadedmetadata', () => {
+      console.log('✅ Stream metadata loaded');
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
+      updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps`);
+    });
+
     audioPlayer.addEventListener('canplay', () => {
-      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Station 01';
+      console.log('✅ Stream ready to play');
+      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       if (audioPlayer.paused) {
-        updatePlayerDisplay(stationName, 'Ready', '');
+        updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
       }
+    });
+
+    audioPlayer.addEventListener('canplaythrough', () => {
+      console.log('✅ Stream fully loaded');
     });
   }
 

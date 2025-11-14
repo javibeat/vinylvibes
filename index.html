@@ -59,16 +59,15 @@
   <link rel="manifest" href="assets/manifest.json">
   
   <!-- Security Headers (via meta tags) -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' https://stream.radiojavibeat.com; connect-src 'self' https://stream.radiojavibeat.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' http://vinylvibesradio.com:8000; connect-src 'self' http://vinylvibesradio.com:8000; base-uri 'self'; form-action 'self';">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
-  <meta http-equiv="X-Frame-Options" content="DENY">
   <meta http-equiv="X-XSS-Protection" content="1; mode=block">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()">
   
   <!-- Preconnect for performance -->
-  <link rel="preconnect" href="https://stream.radiojavibeat.com" crossorigin>
-  <link rel="dns-prefetch" href="https://stream.radiojavibeat.com">
+  <link rel="preconnect" href="http://vinylvibesradio.com:8000" crossorigin>
+  <link rel="dns-prefetch" href="http://vinylvibesradio.com:8000">
   
   <!-- Stylesheet -->
   <link rel="stylesheet" href="assets/css/styles.css">
@@ -130,6 +129,14 @@
   <header class="header">
     <h1 class="logo">Vinyl Beats <span>Radio</span></h1>
     <div class="header-controls">
+      <!-- Quality Toggle -->
+      <div class="quality-toggle-container">
+        <span class="quality-label">Quality:</span>
+        <button class="quality-toggle" id="qualityToggle" aria-label="Toggle audio quality">
+          <span class="quality-value" id="qualityValue">320</span>
+          <span class="quality-unit">kbps</span>
+        </button>
+      </div>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
         <span class="theme-icon">🌙</span>
       </button>
@@ -151,20 +158,36 @@
       <div class="bento-card stations-card">
         <h3 class="section-title">Stations</h3>
         <div class="stations">
-          <button class="station-btn active" data-station="stream1" data-url="https://stream.radiojavibeat.com/stream.mp3" aria-label="Seleccionar Station 01" tabindex="0">
-            <span class="station-name">Station 01</span>
+          <button class="station-btn active" data-station="deep" data-base-url="http://vinylvibesradio.com:8000/deep" aria-label="Select Deep House" tabindex="0">
+            <span class="station-name">Deep House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="stream2" data-url="https://stream.radiojavibeat.com/stream2.mp3" aria-label="Seleccionar Station 02" tabindex="0">
-            <span class="station-name">Station 02</span>
+          <button class="station-btn" data-station="house" data-base-url="http://vinylvibesradio.com:8000/house" aria-label="Select House" tabindex="0">
+            <span class="station-name">House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="stream3" data-url="https://stream.radiojavibeat.com/stream3.mp3" aria-label="Seleccionar Station 03" tabindex="0">
-            <span class="station-name">Station 03</span>
+          <button class="station-btn" data-station="jackin" data-base-url="http://vinylvibesradio.com:8000/jackin" aria-label="Select Jackin House" tabindex="0">
+            <span class="station-name">Jackin House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="stream4" data-url="https://stream.radiojavibeat.com/stream4.mp3" aria-label="Seleccionar Station 04" tabindex="0">
-            <span class="station-name">Station 04</span>
+          <button class="station-btn" data-station="jazzy" data-base-url="http://vinylvibesradio.com:8000/jazzy" aria-label="Select Jazzy House" tabindex="0">
+            <span class="station-name">Jazzy House</span>
+            <span class="station-indicator"></span>
+          </button>
+          <button class="station-btn" data-station="nudisco" data-base-url="http://vinylvibesradio.com:8000/nudisco" aria-label="Select Nu Disco" tabindex="0">
+            <span class="station-name">Nu Disco</span>
+            <span class="station-indicator"></span>
+          </button>
+          <button class="station-btn" data-station="soulful" data-base-url="http://vinylvibesradio.com:8000/soulful" aria-label="Select Soulful House" tabindex="0">
+            <span class="station-name">Soulful House</span>
+            <span class="station-indicator"></span>
+          </button>
+          <button class="station-btn" data-station="techhouse" data-base-url="http://vinylvibesradio.com:8000/techhouse" aria-label="Select Tech House" tabindex="0">
+            <span class="station-name">Tech House</span>
+            <span class="station-indicator"></span>
+          </button>
+          <button class="station-btn" data-station="classic" data-base-url="http://vinylvibesradio.com:8000/classic" aria-label="Select House Classics" tabindex="0">
+            <span class="station-name">House Classics</span>
             <span class="station-indicator"></span>
           </button>
         </div>
@@ -197,14 +220,28 @@
   <!-- Fixed Player (SoundCloud style) -->
   <div class="fixed-player" id="fixedPlayer">
     <div class="fixed-player-content">
-      <div class="fixed-player-info">
-        <span class="current-station" id="currentStation">Station 01</span>
-        <span class="player-status" id="playerStatus">Paused</span>
-        <span class="stream-status" id="streamStatus" aria-live="polite"></span>
+      <!-- Track Artwork -->
+      <div class="player-artwork">
+        <img id="trackArtwork" src="" alt="Track artwork" class="artwork-image">
+        <div class="artwork-placeholder" id="artworkPlaceholder">🎵</div>
       </div>
+      
+      <!-- Track Info -->
+      <div class="player-track-info">
+        <div class="track-name-container">
+          <span class="current-station" id="currentStation">Deep House</span>
+          <span class="track-name" id="trackName">Loading track info...</span>
+        </div>
+        <div class="player-status-container">
+          <span class="player-status" id="playerStatus">Ready</span>
+          <span class="stream-status" id="streamStatus" aria-live="polite"></span>
+        </div>
+      </div>
+      
+      <!-- Player Controls -->
       <div class="fixed-player-controls">
-        <audio id="audioPlayer" controls aria-label="Reproductor de audio" preload="none">
-          <source src="https://stream.radiojavibeat.com/stream.mp3" type="audio/mpeg">
+        <audio id="audioPlayer" controls aria-label="Audio player" preload="none">
+          <source src="" type="audio/mpeg">
           Your browser does not support the audio player.
         </audio>
       </div>
