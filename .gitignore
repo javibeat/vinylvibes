@@ -1,6 +1,17 @@
 # Project specific
 roadmap.txt
 
+# Server configuration files (sensitive - do not commit)
+docker-compose.yml
+icecast.xml
+main.liq
+*.sh
+*_setup.sh
+*_SETUP.md
+CAMBIAR_*.md
+DOCKER_*.md
+RASPBERRY_*.md
+
 # OS generated files
 .DS_Store
 .DS_Store?
