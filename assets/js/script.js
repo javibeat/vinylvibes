@@ -103,6 +103,33 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.classList.add('loaded');
   });
 
+  // Background playback support - Update Media Session
+  function updateMediaSession(stationName) {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: stationName,
+        artist: 'Vinyl Beats Radio',
+        album: 'Pure House Music 24/7',
+        artwork: [
+          { src: '/assets/icons/favicon.svg', sizes: '512x512', type: 'image/svg+xml' }
+        ]
+      });
+    }
+  }
+
+  // Keep audio playing when page is hidden (background playback)
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && audioPlayer.paused && localStorage.getItem('wasPlaying') === 'true') {
+      // Page became visible again, resume if it was playing
+      const favoriteStationId = getFavoriteStation();
+      if (currentStation === favoriteStationId) {
+        audioPlayer.play().catch(err => {
+          console.log('Auto-resume prevented');
+        });
+      }
+    }
+  });
+
   // Station management
   const stationButtons = document.querySelectorAll('.station-btn');
   const audioPlayer = document.getElementById('audioPlayer');
@@ -220,6 +247,9 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
     updateTrackInfo(stationName);
     
+    // Update media session for background playback
+    updateMediaSession(stationName);
+    
     // Set new source
     currentStation = stationId;
     currentBaseUrl = baseUrl;
@@ -325,23 +355,84 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       
+      // Check if it's a double-click or long-press to set as favorite
+      const clickTime = Date.now();
+      const lastClick = button.dataset.lastClick || 0;
+      const timeDiff = clickTime - lastClick;
+      
+      if (timeDiff < 500 && timeDiff > 0) {
+        // Double-click detected - set as favorite
+        setFavoriteStation(stationId);
+        console.log(`⭐ ${stationName} marcada como favorita`);
+        updatePlayerDisplay(stationName, 'Playing', '⭐ Favorita');
+        return;
+      }
+      
+      button.dataset.lastClick = clickTime;
+      
+      // Save favorite when switching stations
+      setFavoriteStation(stationId);
       switchStation(stationId, false);
     });
   });
 
-  // Set initial station (but don't load stream automatically)
-  const initialStation = document.querySelector('.station-btn.active');
+  // Favorite station management
+  function getFavoriteStation() {
+    return localStorage.getItem('favoriteStation') || 'deep';
+  }
+  
+  function setFavoriteStation(stationId) {
+    localStorage.setItem('favoriteStation', stationId);
+    // Update UI to show favorite
+    stationButtons.forEach(btn => {
+      btn.classList.remove('favorite');
+      if (btn.getAttribute('data-station') === stationId) {
+        btn.classList.add('favorite');
+      }
+    });
+  }
+  
+  // Set initial station - use favorite if available
+  const favoriteStationId = getFavoriteStation();
+  let initialStation = document.querySelector(`[data-station="${favoriteStationId}"]`);
+  
+  // If favorite station button exists, use it; otherwise use the active one
+  if (!initialStation) {
+    initialStation = document.querySelector('.station-btn.active');
+  }
+  
   if (initialStation) {
     const stationId = initialStation.getAttribute('data-station');
     const stationName = initialStation.querySelector('.station-name').textContent;
     currentStation = stationId;
     currentBaseUrl = initialStation.getAttribute('data-base-url');
     
-    console.log(`🎯 Initial station: ${stationName} (ID: ${stationId})`);
-    updatePlayerDisplay(stationName, 'Ready', 'Select a station and click play');
+    // Update active state
+    stationButtons.forEach(btn => btn.classList.remove('active'));
+    initialStation.classList.add('active');
     
-    // Don't load stream automatically - wait for user to click play
-    // This avoids timeout errors on page load
+    // Mark favorite
+    if (stationId === favoriteStationId) {
+      initialStation.classList.add('favorite');
+    }
+    
+    console.log(`🎯 Initial station: ${stationName} (ID: ${stationId})`);
+    
+    // Auto-play favorite station if it was playing before
+    const wasPlaying = localStorage.getItem('wasPlaying') === 'true';
+    if (wasPlaying && stationId === favoriteStationId) {
+      // Small delay to ensure page is loaded
+      setTimeout(() => {
+        switchStation(stationId, true);
+        setTimeout(() => {
+          audioPlayer.play().catch(err => {
+            console.log('Auto-play prevented, user interaction required');
+          });
+        }, 500);
+      }, 1000);
+    } else {
+      updatePlayerDisplay(stationName, 'Ready', 'Select a station and click play');
+    }
   }
 
   // Network status monitoring
@@ -363,12 +454,28 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('🎵 Playback started');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
+      
+      // Save playing state for auto-resume
+      localStorage.setItem('wasPlaying', 'true');
+      
+      // Enable background playback
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', () => {
+          audioPlayer.play();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          audioPlayer.pause();
+        });
+      }
     });
 
     audioPlayer.addEventListener('pause', () => {
       console.log('⏸️ Playback paused');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Paused', '');
+      
+      // Save paused state
+      localStorage.setItem('wasPlaying', 'false');
     });
 
     audioPlayer.addEventListener('playing', () => {

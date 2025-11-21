@@ -340,6 +340,37 @@ body {
   animation: pulse 2s infinite;
 }
 
+/* Favorite station styling */
+.station-btn.favorite {
+  position: relative;
+}
+
+.station-btn.favorite::after {
+  content: '⭐';
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 0.9rem;
+  opacity: 0.8;
+  animation: starPulse 2s infinite;
+}
+
+.station-btn.favorite.active::after {
+  opacity: 1;
+  filter: brightness(1.2);
+}
+
+@keyframes starPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
