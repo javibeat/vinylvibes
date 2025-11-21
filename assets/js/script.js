@@ -51,8 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Build stream URL
-  function buildStreamUrl(baseUrl, quality) {
-    return `${baseUrl}/${quality}.mp3`;
+  function buildStreamUrl(baseUrl, mountName, quality) {
+    // Mounts format: /mountname320 or /mountname192
+    // Example: /jazzy320 or /jazzy192
+    const mount = `${mountName}${quality}`;
+    return `${baseUrl}/${mount}`;
   }
 
   // Test if stream URL is accessible
@@ -187,8 +190,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     const baseUrl = button.getAttribute('data-base-url');
+    const mountName = button.getAttribute('data-mount');
     const stationName = button.querySelector('.station-name').textContent;
-    const streamUrl = buildStreamUrl(baseUrl, currentQuality);
+    const streamUrl = buildStreamUrl(baseUrl, mountName, currentQuality);
     
     console.log(`🔄 Switching to ${stationName}`);
     console.log(`📍 Base URL: ${baseUrl}`);
