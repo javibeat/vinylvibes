@@ -63,15 +63,15 @@
 
   <!-- Security Headers (via meta tags) -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' http://vinylvibesradio.com:8001; connect-src 'self' http://vinylvibesradio.com:8001; base-uri 'self'; form-action 'self';">
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; media-src 'self' https://radio.vinylvibesradio.com http://vinylvibesradio.com:8001; connect-src 'self' https://radio.vinylvibesradio.com http://vinylvibesradio.com:8001; base-uri 'self'; form-action 'self';">
   <meta http-equiv="X-Content-Type-Options" content="nosniff">
   <meta http-equiv="X-XSS-Protection" content="1; mode=block">
   <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
   <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()">
 
   <!-- Preconnect for performance -->
-  <link rel="preconnect" href="http://vinylvibesradio.com:8001" crossorigin>
-  <link rel="dns-prefetch" href="http://vinylvibesradio.com:8001">
+  <link rel="preconnect" href="https://radio.vinylvibesradio.com" crossorigin>
+  <link rel="dns-prefetch" href="https://radio.vinylvibesradio.com">
 
   <!-- Stylesheet -->
   <link rel="stylesheet" href="assets/css/styles.css">
@@ -162,42 +162,42 @@
       <div class="bento-card stations-card">
         <h3 class="section-title">Stations</h3>
         <div class="stations">
-          <button class="station-btn active" data-station="deep" data-base-url="http://192.168.70.142:8001"
+          <button class="station-btn active" data-station="deep" data-base-url="https://radio.vinylvibesradio.com"
             data-mount="deep" aria-label="Select Deep House" tabindex="0">
             <span class="station-name">Deep House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="house" data-base-url="http://192.168.70.142:8001" data-mount="house"
+          <button class="station-btn" data-station="house" data-base-url="https://radio.vinylvibesradio.com" data-mount="house"
             aria-label="Select House" tabindex="0">
             <span class="station-name">House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="jackin" data-base-url="http://192.168.70.142:8001"
+          <button class="station-btn" data-station="jackin" data-base-url="https://radio.vinylvibesradio.com"
             data-mount="jackin" aria-label="Select Jackin House" tabindex="0">
             <span class="station-name">Jackin House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="jazzy" data-base-url="http://192.168.70.142:8001" data-mount="jazzy"
+          <button class="station-btn" data-station="jazzy" data-base-url="https://radio.vinylvibesradio.com" data-mount="jazzy"
             aria-label="Select Jazzy House" tabindex="0">
             <span class="station-name">Jazzy House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="nudisco" data-base-url="http://192.168.70.142:8001"
+          <button class="station-btn" data-station="nudisco" data-base-url="https://radio.vinylvibesradio.com"
             data-mount="nudisco" aria-label="Select Nu Disco" tabindex="0">
             <span class="station-name">Nu Disco</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="soulful" data-base-url="http://192.168.70.142:8001"
+          <button class="station-btn" data-station="soulful" data-base-url="https://radio.vinylvibesradio.com"
             data-mount="soulful" aria-label="Select Soulful House" tabindex="0">
             <span class="station-name">Soulful House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="techhouse" data-base-url="http://192.168.70.142:8001"
+          <button class="station-btn" data-station="techhouse" data-base-url="https://radio.vinylvibesradio.com"
             data-mount="techhouse" aria-label="Select Tech House" tabindex="0">
             <span class="station-name">Tech House</span>
             <span class="station-indicator"></span>
           </button>
-          <button class="station-btn" data-station="classic" data-base-url="http://192.168.70.142:8001"
+          <button class="station-btn" data-station="classic" data-base-url="https://radio.vinylvibesradio.com"
             data-mount="classic" aria-label="Select House Classics" tabindex="0">
             <span class="station-name">House Classics</span>
             <span class="station-indicator"></span>
