@@ -590,6 +590,99 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Custom controls
+  const customPlayBtn = document.getElementById('customPlayBtn');
+  const volumeSlider = document.getElementById('volumeSlider');
+  const volumeIcon = document.getElementById('volumeIcon');
+
+  // Play/Pause button handler
+  if (customPlayBtn && audioPlayer) {
+    customPlayBtn.addEventListener('click', () => {
+      if (audioPlayer.paused) {
+        if (!audioPlayer.src || audioPlayer.src === '') {
+          // No stream selected, load the current station
+          if (currentStation) {
+            switchStation(currentStation, true);
+            setTimeout(() => {
+              audioPlayer.play().catch(err => {
+                console.warn('Play prevented:', err);
+              });
+            }, 500);
+          } else {
+            console.warn('No station selected');
+          }
+        } else {
+          audioPlayer.play().catch(err => {
+            console.warn('Play prevented:', err);
+          });
+        }
+        customPlayBtn.classList.add('playing');
+      } else {
+        audioPlayer.pause();
+        customPlayBtn.classList.remove('playing');
+      }
+    });
+
+    // Update button state when audio plays/pauses
+    audioPlayer.addEventListener('play', () => {
+      customPlayBtn.classList.add('playing');
+    });
+
+    audioPlayer.addEventListener('pause', () => {
+      customPlayBtn.classList.remove('playing');
+    });
+  }
+
+  // Volume control handler
+  if (volumeSlider && audioPlayer) {
+    // Set initial volume
+    audioPlayer.volume = volumeSlider.value / 100;
+
+    // Load saved volume
+    const savedVolume = localStorage.getItem('audioVolume');
+    if (savedVolume !== null) {
+      const volume = parseInt(savedVolume);
+      audioPlayer.volume = volume / 100;
+      volumeSlider.value = volume;
+      updateVolumeIcon(volume);
+    }
+
+    volumeSlider.addEventListener('input', (e) => {
+      const volume = e.target.value;
+      audioPlayer.volume = volume / 100;
+      localStorage.setItem('audioVolume', volume);
+      updateVolumeIcon(volume);
+    });
+
+    // Volume icon click to mute/unmute
+    if (volumeIcon) {
+      volumeIcon.addEventListener('click', () => {
+        if (audioPlayer.volume > 0) {
+          audioPlayer.dataset.previousVolume = audioPlayer.volume;
+          audioPlayer.volume = 0;
+          volumeSlider.value = 0;
+          updateVolumeIcon(0);
+        } else {
+          const prevVolume = parseFloat(audioPlayer.dataset.previousVolume || 1);
+          audioPlayer.volume = prevVolume;
+          volumeSlider.value = prevVolume * 100;
+          updateVolumeIcon(prevVolume * 100);
+        }
+      });
+    }
+  }
+
+  function updateVolumeIcon(volume) {
+    if (!volumeIcon) return;
+    if (volume === 0 || volume === '0') {
+      volumeIcon.textContent = '🔇';
+    } else if (volume < 50) {
+      volumeIcon.textContent = '🔉';
+    } else {
+      volumeIcon.textContent = '🔊';
+    }
+  }
+
   // Smooth animation when bento-style cards appear
   const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
