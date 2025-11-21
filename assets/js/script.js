@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const themeToggle = document.getElementById('themeToggle');
   const themeIcon = themeToggle.querySelector('.theme-icon');
   const html = document.documentElement;
-  
+
   // Load saved theme or default to light
   const savedTheme = localStorage.getItem('theme') || 'light';
   html.setAttribute('data-theme', savedTheme);
@@ -29,21 +29,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const qualityToggle = document.getElementById('qualityToggle');
   const qualityValue = document.getElementById('qualityValue');
   let currentQuality = parseInt(localStorage.getItem('audioQuality')) || 320; // Default to 320 kbps
-  
+
   // Update quality display
   function updateQualityDisplay() {
     qualityValue.textContent = currentQuality;
     localStorage.setItem('audioQuality', currentQuality.toString());
   }
-  
+
   // Initialize quality display
   updateQualityDisplay();
-  
+
   // Quality toggle handler
   qualityToggle.addEventListener('click', () => {
     currentQuality = currentQuality === 320 ? 192 : 320;
     updateQualityDisplay();
-    
+
     // If a station is currently playing, switch to new quality
     if (currentStation && audioPlayer.src) {
       switchStation(currentStation, true);
@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return new Promise((resolve) => {
       const testAudio = new Audio();
       let resolved = false;
-      
+
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
@@ -72,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
           resolve(false);
         }
       }, 5000); // 5 second timeout
-      
+
       testAudio.addEventListener('canplay', () => {
         if (!resolved) {
           resolved = true;
@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
           resolve(true);
         }
       });
-      
+
       testAudio.addEventListener('error', () => {
         if (!resolved) {
           resolved = true;
@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
           resolve(false);
         }
       });
-      
+
       testAudio.src = url;
       testAudio.load();
     });
@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const streamStatusDisplay = document.getElementById('streamStatus');
   const trackArtwork = document.getElementById('trackArtwork');
   const artworkPlaceholder = document.getElementById('artworkPlaceholder');
-  
+
   let currentStation = null;
   let currentBaseUrl = null;
   let reconnectAttempts = 0;
@@ -168,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (trackNameDisplay) {
       trackNameDisplay.textContent = 'Now playing on ' + stationName;
     }
-    
+
     // TODO: Fetch artwork from API or metadata
     // For now, show placeholder
     if (artworkPlaceholder) {
@@ -185,15 +185,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // Try to fetch from Icecast status JSON
       // This is a common endpoint for Icecast servers
       const statusUrl = baseUrl.replace('/192.mp3', '').replace('/320.mp3', '') + '/status-json.xsl';
-      
+
       const response = await fetch(statusUrl);
       if (response.ok) {
         const data = await response.json();
         if (data.icestats && data.icestats.source) {
-          const source = Array.isArray(data.icestats.source) 
-            ? data.icestats.source[0] 
+          const source = Array.isArray(data.icestats.source)
+            ? data.icestats.source[0]
             : data.icestats.source;
-          
+
           if (source.yp_currently_playing) {
             return {
               title: source.yp_currently_playing,
@@ -215,49 +215,49 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Station button not found:', stationId);
       return;
     }
-    
+
     const baseUrl = button.getAttribute('data-base-url');
     const mountName = button.getAttribute('data-mount');
     const stationName = button.querySelector('.station-name').textContent;
     const streamUrl = buildStreamUrl(baseUrl, mountName, currentQuality);
-    
+
     console.log(`🔄 Switching to ${stationName}`);
     console.log(`📍 Base URL: ${baseUrl}`);
     console.log(`🎵 Stream URL: ${streamUrl}`);
     console.log(`📊 Quality: ${currentQuality} kbps`);
-    
+
     const wasPlaying = !audioPlayer.paused && keepPlaying;
     reconnectAttempts = 0;
-    
+
     // Clear any pending reconnection
     if (reconnectTimeout) {
       clearTimeout(reconnectTimeout);
       reconnectTimeout = null;
     }
-    
+
     // Stop current playback
     audioPlayer.pause();
     audioPlayer.src = '';
-    
+
     // Update active state
     stationButtons.forEach(btn => btn.classList.remove('active'));
     button.classList.add('active');
-    
+
     // Update display
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
     updateTrackInfo(stationName);
-    
+
     // Update media session for background playback
     updateMediaSession(stationName);
-    
+
     // Set new source
     currentStation = stationId;
     currentBaseUrl = baseUrl;
-    
+
     // Test stream accessibility first
     console.log(`🧪 Testing stream accessibility: ${streamUrl}`);
     updatePlayerDisplay(stationName, 'Checking...', 'Verifying stream availability...');
-    
+
     testStreamUrl(streamUrl).then(isAccessible => {
       if (!isAccessible) {
         console.error(`❌ Stream not accessible: ${streamUrl}`);
@@ -266,19 +266,19 @@ document.addEventListener('DOMContentLoaded', () => {
         console.warn('   1. Verify the stream is running on the server');
         console.warn('   2. Check if CORS is enabled on the server');
         console.warn('   3. Try opening the URL directly in browser:', streamUrl);
-        console.warn('   4. Check if port 8000 is accessible');
+        console.warn('   4. Check if port 8001 is accessible');
         return;
       }
-      
+
       // Load new stream
       console.log(`🔗 Setting audio source to: ${streamUrl}`);
       audioPlayer.src = streamUrl;
-      
+
       // Wait a bit before loading to ensure source is set
       setTimeout(() => {
         console.log(`📥 Loading audio element...`);
         audioPlayer.load();
-        
+
         // Try to play if was playing before
         if (wasPlaying) {
           setTimeout(() => {
@@ -294,7 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }, 50);
     });
-    
+
     // Try to fetch track info
     fetchTrackInfo(baseUrl).then(info => {
       if (info && info.title) {
@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
         trackNameDisplay.textContent = `Now playing on ${stationName}`;
       }
     });
-    
+
     // Start periodic track info updates
     if (trackInfoInterval) {
       clearInterval(trackInfoInterval);
@@ -328,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
     }, 10000); // Update every 10 seconds
-    
+
     console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
   }
 
@@ -344,22 +344,22 @@ document.addEventListener('DOMContentLoaded', () => {
     button.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       const stationId = button.getAttribute('data-station');
       const stationName = button.querySelector('.station-name').textContent;
-      
+
       console.log(`🖱️ Click detected on: ${stationName} (ID: ${stationId})`);
-      
+
       if (!stationId) {
         console.error('❌ No station ID found on button');
         return;
       }
-      
+
       // Check if it's a double-click or long-press to set as favorite
       const clickTime = Date.now();
       const lastClick = button.dataset.lastClick || 0;
       const timeDiff = clickTime - lastClick;
-      
+
       if (timeDiff < 500 && timeDiff > 0) {
         // Double-click detected - set as favorite
         setFavoriteStation(stationId);
@@ -367,9 +367,9 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePlayerDisplay(stationName, 'Playing', '⭐ Favorita');
         return;
       }
-      
+
       button.dataset.lastClick = clickTime;
-      
+
       // Save favorite when switching stations
       setFavoriteStation(stationId);
       switchStation(stationId, false);
@@ -380,7 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function getFavoriteStation() {
     return localStorage.getItem('favoriteStation') || 'deep';
   }
-  
+
   function setFavoriteStation(stationId) {
     localStorage.setItem('favoriteStation', stationId);
     // Update UI to show favorite
@@ -391,33 +391,33 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  
+
   // Set initial station - use favorite if available
   const favoriteStationId = getFavoriteStation();
   let initialStation = document.querySelector(`[data-station="${favoriteStationId}"]`);
-  
+
   // If favorite station button exists, use it; otherwise use the active one
   if (!initialStation) {
     initialStation = document.querySelector('.station-btn.active');
   }
-  
+
   if (initialStation) {
     const stationId = initialStation.getAttribute('data-station');
     const stationName = initialStation.querySelector('.station-name').textContent;
     currentStation = stationId;
     currentBaseUrl = initialStation.getAttribute('data-base-url');
-    
+
     // Update active state
     stationButtons.forEach(btn => btn.classList.remove('active'));
     initialStation.classList.add('active');
-    
+
     // Mark favorite
     if (stationId === favoriteStationId) {
       initialStation.classList.add('favorite');
     }
-    
+
     console.log(`🎯 Initial station: ${stationName} (ID: ${stationId})`);
-    
+
     // Auto-play favorite station if it was playing before
     const wasPlaying = localStorage.getItem('wasPlaying') === 'true';
     if (wasPlaying && stationId === favoriteStationId) {
@@ -454,10 +454,10 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('🎵 Playback started');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
-      
+
       // Save playing state for auto-resume
       localStorage.setItem('wasPlaying', 'true');
-      
+
       // Enable background playback
       if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', () => {
@@ -473,7 +473,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('⏸️ Playback paused');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Paused', '');
-      
+
       // Save paused state
       localStorage.setItem('wasPlaying', 'false');
     });
@@ -487,17 +487,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const error = audioPlayer.error;
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       const currentUrl = audioPlayer.src;
-      
+
       console.error('❌ Stream error detected');
       console.error('Error code:', error ? error.code : 'Unknown');
       console.error('Error message:', error ? error.message : 'No error object');
       console.error('Current URL:', currentUrl);
       console.error('Network state:', audioPlayer.networkState);
       console.error('Ready state:', audioPlayer.readyState);
-      
+
       if (error) {
         let errorMessage = '';
-        switch(error.code) {
+        switch (error.code) {
           case MediaError.MEDIA_ERR_ABORTED:
             errorMessage = 'Connection cancelled';
             updatePlayerDisplay(stationName, 'Aborted', errorMessage);
@@ -537,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('   1. Stream is not running on the server');
             console.warn('   2. CORS is not enabled (server must allow cross-origin requests)');
             console.warn('   3. URL is incorrect or server is not accessible');
-            console.warn('   4. Port 8000 is blocked or not accessible');
+            console.warn('   4. Port 8001 is blocked or not accessible');
             console.warn(`📋 Test URL directly: ${currentUrl}`);
             console.warn('🔧 Server should have CORS headers:');
             console.warn('   Access-Control-Allow-Origin: *');
