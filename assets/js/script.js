@@ -184,7 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       // Try to fetch from Icecast status JSON
       // This is a common endpoint for Icecast servers
-      const statusUrl = baseUrl.replace('/192.mp3', '').replace('/320.mp3', '') + '/status-json.xsl';
+      const statusUrl = `${baseUrl}/status-json.xsl`;
 
       const response = await fetch(statusUrl);
       if (response.ok) {
@@ -266,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.warn('   1. Verify the stream is running on the server');
         console.warn('   2. Check if CORS is enabled on the server');
         console.warn('   3. Try opening the URL directly in browser:', streamUrl);
-        console.warn('   4. Check if port 8001 is accessible');
+            console.warn('   4. Check if stream is accessible');
         return;
       }
 
@@ -537,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('   1. Stream is not running on the server');
             console.warn('   2. CORS is not enabled (server must allow cross-origin requests)');
             console.warn('   3. URL is incorrect or server is not accessible');
-            console.warn('   4. Port 8001 is blocked or not accessible');
+            console.warn('   4. Stream URL is incorrect or not accessible');
             console.warn(`📋 Test URL directly: ${currentUrl}`);
             console.warn('🔧 Server should have CORS headers:');
             console.warn('   Access-Control-Allow-Origin: *');
