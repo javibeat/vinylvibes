@@ -258,13 +258,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Try to play if shouldAutoPlay is true
       if (shouldAutoPlay) {
-        setTimeout(() => {
-          console.log(`▶️ Attempting to auto-play...`);
-          audioPlayer.play().catch(err => {
-            console.warn('⚠️ Auto-play prevented:', err.name, err.message);
-            updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-          });
-        }, 100);
+        // Wait for stream to be ready before attempting play
+        const attemptPlay = () => {
+          if (audioPlayer.readyState >= 2 || audioPlayer.readyState === 0) {
+            console.log(`▶️ Attempting to auto-play...`);
+            audioPlayer.play().then(() => {
+              console.log('✅ Auto-play successful');
+            }).catch(err => {
+              console.warn('⚠️ Auto-play prevented:', err.name, err.message);
+              updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+            });
+          } else {
+            // Stream not ready yet, wait a bit more
+            setTimeout(attemptPlay, 100);
+          }
+        };
+        setTimeout(attemptPlay, 200);
       } else {
         updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
         console.log(`⏸️ Stream loaded, waiting for user to click play`);
@@ -282,48 +291,15 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('Stream test error (non-critical):', err);
     });
 
-    // Try to fetch track info (optional, don't block on errors)
-    fetchTrackInfo(baseUrl).then(info => {
-      if (info && info.title) {
-        if (trackNameDisplay) {
-          trackNameDisplay.textContent = info.title;
-        }
-      } else {
-        if (trackNameDisplay) {
-          trackNameDisplay.textContent = `Now playing on ${stationName}`;
-        }
-      }
-    }).catch(err => {
-      // Silently fail - track info is optional
-      if (trackNameDisplay) {
-        trackNameDisplay.textContent = `Now playing on ${stationName}`;
-      }
-    });
+    // Set track name display (track info endpoints not available)
+    if (trackNameDisplay) {
+      trackNameDisplay.textContent = `Now playing on ${stationName}`;
+    }
 
-    // Start periodic track info updates (only if track info is available)
+    // Track info is disabled - no interval needed
     if (trackInfoInterval) {
       clearInterval(trackInfoInterval);
-    }
-    // Only set up interval if track info endpoints are available
-    if (trackInfoAvailable !== false) {
-      trackInfoInterval = setInterval(() => {
-        // Stop trying if we've determined it's not available
-        if (trackInfoAvailable === false) {
-          clearInterval(trackInfoInterval);
-          return;
-        }
-        if (currentBaseUrl) {
-          fetchTrackInfo(currentBaseUrl).then(info => {
-            if (info && info.title && trackNameDisplay) {
-              trackNameDisplay.textContent = info.title;
-            }
-          }).catch(() => {
-            // Silently fail - track info is optional
-            trackInfoAvailable = false;
-            clearInterval(trackInfoInterval);
-          });
-        }
-      }, 10000); // Update every 10 seconds
+      trackInfoInterval = null;
     }
 
     console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
@@ -420,24 +396,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Small delay to ensure page is loaded
     setTimeout(() => {
       switchStation(stationId, true);
-      // Additional delay to ensure stream is loaded before attempting play
-      setTimeout(() => {
-        if (audioPlayer.src && audioPlayer.readyState >= 2) {
-          audioPlayer.play().catch(err => {
-            console.log('Auto-play prevented, user interaction required');
+      // Wait for stream to be ready, then attempt auto-play
+      const attemptAutoPlay = () => {
+        if (audioPlayer.src && (audioPlayer.readyState >= 2 || audioPlayer.readyState === 0)) {
+          audioPlayer.play().then(() => {
+            console.log('✅ Auto-play successful on page load');
+          }).catch(err => {
+            console.log('⚠️ Auto-play prevented by browser (normal behavior)');
             updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
           });
         } else {
-          // Wait a bit more if stream isn't ready
-          setTimeout(() => {
-            audioPlayer.play().catch(err => {
-              console.log('Auto-play prevented, user interaction required');
-              updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-            });
-          }, 500);
+          // Stream not ready yet, wait a bit more
+          setTimeout(attemptAutoPlay, 200);
         }
-      }, 800);
-    }, 1200);
+      };
+      
+      // Start attempting after a short delay
+      setTimeout(attemptAutoPlay, 1000);
+    }, 1500);
   }
 
   // Network status monitoring
