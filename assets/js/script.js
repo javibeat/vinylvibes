@@ -358,54 +358,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Track info will be updated via metadata events
     updateTrackInfo(stationName);
 
-    // Set up periodic metadata check from stream
+    // Track info interval disabled - metadata endpoints not available on this server
+    // This prevents 404 errors from status-json.xsl
     if (trackInfoInterval) {
       clearInterval(trackInfoInterval);
+      trackInfoInterval = null;
     }
-    
-    // Try to get metadata from the stream periodically
-    // Note: This will attempt to read metadata from the MP3 stream or Icecast API
-    trackInfoInterval = setInterval(() => {
-      if (!audioPlayer.src || audioPlayer.paused) return;
-      
-      // Try to get metadata from Icecast if available
-      const statusUrl = `${currentBaseUrl}/status-json.xsl`;
-      
-      fetch(statusUrl, { 
-        method: 'GET',
-        cache: 'no-cache',
-        signal: AbortSignal.timeout(2000)
-      })
-      .then(response => {
-        if (response.ok) {
-          return response.json();
-        }
-        throw new Error('Status not available');
-      })
-      .then(data => {
-        if (data.icestats && data.icestats.source) {
-          const sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
-          // Find source matching current mount
-          const mountPattern = mountName.replace(/\d+$/, ''); // Remove quality suffix
-          const source = sources.find(s => {
-            const url = s.listenurl || s.server_name || '';
-            return url.includes(mountName) || url.includes(mountPattern);
-          });
-          
-          if (source) {
-            // Try different metadata fields
-            const trackTitle = source.title || source.server_name || source.yp_currently_playing || source.StreamTitle || null;
-            if (trackTitle && trackTitle.trim() !== '' && trackTitle !== stationName) {
-              updateTrackInfo(stationName, trackTitle);
-            }
-          }
-        }
-      })
-      .catch(() => {
-        // Silently fail - metadata endpoint might not be available
-        // This is expected and not an error
-      });
-    }, 10000); // Check every 10 seconds
 
     console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
   }
