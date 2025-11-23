@@ -179,130 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Track if track info endpoints are available (cache to avoid repeated 404s)
-  let trackInfoAvailable = null; // null = unknown, true = available, false = not available
-  let trackInfoCheckAttempted = false; // Track if we've tried to check at least once
-
-  // Fetch track info from Icecast (if available)
+  // Track info is disabled - endpoints don't exist on this Icecast server
+  // This function is kept for future use but always returns null to avoid 404 errors
   async function fetchTrackInfo(baseUrl) {
-    // If we've already determined that track info is not available, skip silently
-    if (trackInfoAvailable === false) {
-      return null;
-    }
-
-    // Only try once per page load to avoid repeated 404s
-    if (!trackInfoCheckAttempted) {
-      trackInfoCheckAttempted = true;
-    } else if (trackInfoAvailable === null) {
-      // If we've tried before and still don't know, assume it's not available
-      trackInfoAvailable = false;
-      return null;
-    }
-
-    try {
-      // Try to fetch from Icecast status XML and parse it
-      // First try status-json.xsl, then status.xsl
-      let statusUrl = `${baseUrl}/status-json.xsl`;
-      let response;
-      
-      try {
-        // Use a timeout to avoid hanging requests
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        
-        response = await fetch(statusUrl, { 
-          method: 'HEAD', // Use HEAD first to check if endpoint exists
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-      } catch (err) {
-        // If HEAD fails or times out, mark as unavailable
-        trackInfoAvailable = false;
-        return null;
-      }
-      
-      if (!response.ok) {
-        // Fallback to status.xsl
-        statusUrl = `${baseUrl}/status.xsl`;
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2000);
-          
-          response = await fetch(statusUrl, { 
-            method: 'HEAD',
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-        } catch (err) {
-          // Both endpoints don't exist or timeout, mark as unavailable
-          trackInfoAvailable = false;
-          return null;
-        }
-      }
-
-      if (response.ok) {
-        // Mark as available if we get here
-        trackInfoAvailable = true;
-        
-        // Now try to get the actual data with GET
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2000);
-          
-          const dataResponse = await fetch(statusUrl, { 
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-          
-          if (dataResponse.ok) {
-            const text = await dataResponse.text();
-            
-            // Try to parse as JSON first
-            try {
-              const data = JSON.parse(text);
-              if (data.icestats && data.icestats.source) {
-                const source = Array.isArray(data.icestats.source)
-                  ? data.icestats.source[0]
-                  : data.icestats.source;
-
-                if (source.server_name || source.title) {
-                  return {
-                    title: source.title || source.server_name,
-                    artwork: null
-                  };
-                }
-              }
-            } catch (e) {
-              // If not JSON, try to parse XML
-              const parser = new DOMParser();
-              const xmlDoc = parser.parseFromString(text, 'text/xml');
-              const sources = xmlDoc.querySelectorAll('source');
-              if (sources.length > 0) {
-                const source = sources[0];
-                const title = source.querySelector('title')?.textContent || 
-                             source.querySelector('server_name')?.textContent;
-                if (title) {
-                  return {
-                    title: title,
-                    artwork: null
-                  };
-                }
-              }
-            }
-          }
-        } catch (dataErr) {
-          // Failed to get data, but endpoint exists
-          return null;
-        }
-      } else {
-        // Both endpoints returned errors, mark as unavailable
-        trackInfoAvailable = false;
-      }
-    } catch (error) {
-      // Silently fail - track info is optional
-      // Mark as unavailable after first error
-      trackInfoAvailable = false;
-    }
+    // Disabled - endpoints not available on this server
     return null;
   }
 
@@ -324,7 +204,9 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`🎵 Stream URL: ${streamUrl}`);
     console.log(`📊 Quality: ${currentQuality} kbps`);
 
-    const wasPlaying = !audioPlayer.paused && keepPlaying;
+    // If keepPlaying is true, we want to auto-play regardless of current state
+    const shouldAutoPlay = keepPlaying;
+    const wasPlaying = !audioPlayer.paused;
     reconnectAttempts = 0;
 
     // Clear any pending reconnection
@@ -374,10 +256,10 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log(`✅ Verified audio source: ${audioPlayer.src}`);
       audioPlayer.load();
 
-      // Try to play if was playing before
-      if (wasPlaying) {
+      // Try to play if shouldAutoPlay is true
+      if (shouldAutoPlay) {
         setTimeout(() => {
-          console.log(`▶️ Attempting to play...`);
+          console.log(`▶️ Attempting to auto-play...`);
           audioPlayer.play().catch(err => {
             console.warn('⚠️ Auto-play prevented:', err.name, err.message);
             updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
@@ -538,13 +420,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // Small delay to ensure page is loaded
     setTimeout(() => {
       switchStation(stationId, true);
+      // Additional delay to ensure stream is loaded before attempting play
       setTimeout(() => {
-        audioPlayer.play().catch(err => {
-          console.log('Auto-play prevented, user interaction required');
-          updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-        });
-      }, 500);
-    }, 1000);
+        if (audioPlayer.src && audioPlayer.readyState >= 2) {
+          audioPlayer.play().catch(err => {
+            console.log('Auto-play prevented, user interaction required');
+            updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+          });
+        } else {
+          // Wait a bit more if stream isn't ready
+          setTimeout(() => {
+            audioPlayer.play().catch(err => {
+              console.log('Auto-play prevented, user interaction required');
+              updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+            });
+          }, 500);
+        }
+      }, 800);
+    }, 1200);
   }
 
   // Network status monitoring
