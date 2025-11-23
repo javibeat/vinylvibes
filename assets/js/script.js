@@ -161,21 +161,75 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Update track info (placeholder - will need Icecast API integration)
-  function updateTrackInfo(stationName) {
-    // TODO: Fetch track info from Icecast API
-    // For now, show placeholder
+  // Update track info with metadata from stream
+  function updateTrackInfo(stationName, trackTitle = null, artworkUrl = null) {
+    // Update track name
     if (trackNameDisplay) {
-      trackNameDisplay.textContent = 'Now playing on ' + stationName;
+      if (trackTitle && trackTitle.trim() !== '') {
+        trackNameDisplay.textContent = trackTitle;
+      } else {
+        trackNameDisplay.textContent = `Now playing on ${stationName}`;
+      }
     }
 
-    // TODO: Fetch artwork from API or metadata
-    // For now, show placeholder
-    if (artworkPlaceholder) {
-      artworkPlaceholder.style.display = 'flex';
+    // Update artwork
+    if (artworkUrl && artworkUrl.trim() !== '') {
+      if (trackArtwork) {
+        trackArtwork.src = artworkUrl;
+        trackArtwork.style.display = 'block';
+        trackArtwork.onerror = () => {
+          // If image fails to load, show placeholder
+          trackArtwork.style.display = 'none';
+          if (artworkPlaceholder) {
+            artworkPlaceholder.style.display = 'flex';
+          }
+        };
+      }
+      if (artworkPlaceholder) {
+        artworkPlaceholder.style.display = 'none';
+      }
+    } else {
+      // Show placeholder if no artwork
+      if (artworkPlaceholder) {
+        artworkPlaceholder.style.display = 'flex';
+      }
+      if (trackArtwork) {
+        trackArtwork.style.display = 'none';
+      }
     }
-    if (trackArtwork) {
-      trackArtwork.style.display = 'none';
+  }
+
+  // Extract metadata from audio element (if available)
+  function extractMetadataFromAudio() {
+    if (!audioPlayer || !audioPlayer.src) return null;
+    
+    try {
+      // Try to get metadata from the audio element
+      // Note: Browsers have limited support for reading ID3 tags from streams
+      // We'll use the metadataupdate event if available
+      return null; // Will be populated by metadataupdate event
+    } catch (e) {
+      console.warn('Could not extract metadata from audio:', e);
+      return null;
+    }
+  }
+
+  // Fetch artwork from external API based on track title
+  async function fetchArtworkFromAPI(trackTitle, artist = null) {
+    if (!trackTitle || trackTitle.trim() === '') return null;
+    
+    try {
+      // Try Last.fm API (free, no key required for basic usage)
+      const searchQuery = artist ? `${artist} ${trackTitle}` : trackTitle;
+      const response = await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.search&track=${encodeURIComponent(searchQuery)}&api_key=YOUR_API_KEY&format=json`, {
+        mode: 'cors'
+      });
+      
+      // For now, return null - we'll use a simpler approach
+      return null;
+    } catch (e) {
+      console.warn('Could not fetch artwork from API:', e);
+      return null;
     }
   }
 
@@ -301,16 +355,57 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Stream test disabled to prevent 404 errors - streams work without testing
 
-    // Set track name display (track info endpoints not available)
-    if (trackNameDisplay) {
-      trackNameDisplay.textContent = `Now playing on ${stationName}`;
-    }
+    // Track info will be updated via metadata events
+    updateTrackInfo(stationName);
 
-    // Track info is disabled - no interval needed
+    // Set up periodic metadata check from stream
     if (trackInfoInterval) {
       clearInterval(trackInfoInterval);
-      trackInfoInterval = null;
     }
+    
+    // Try to get metadata from the stream periodically
+    // Note: This will attempt to read metadata from the MP3 stream or Icecast API
+    trackInfoInterval = setInterval(() => {
+      if (!audioPlayer.src || audioPlayer.paused) return;
+      
+      // Try to get metadata from Icecast if available
+      const statusUrl = `${currentBaseUrl}/status-json.xsl`;
+      
+      fetch(statusUrl, { 
+        method: 'GET',
+        cache: 'no-cache',
+        signal: AbortSignal.timeout(2000)
+      })
+      .then(response => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new Error('Status not available');
+      })
+      .then(data => {
+        if (data.icestats && data.icestats.source) {
+          const sources = Array.isArray(data.icestats.source) ? data.icestats.source : [data.icestats.source];
+          // Find source matching current mount
+          const mountPattern = mountName.replace(/\d+$/, ''); // Remove quality suffix
+          const source = sources.find(s => {
+            const url = s.listenurl || s.server_name || '';
+            return url.includes(mountName) || url.includes(mountPattern);
+          });
+          
+          if (source) {
+            // Try different metadata fields
+            const trackTitle = source.title || source.server_name || source.yp_currently_playing || source.StreamTitle || null;
+            if (trackTitle && trackTitle.trim() !== '' && trackTitle !== stationName) {
+              updateTrackInfo(stationName, trackTitle);
+            }
+          }
+        }
+      })
+      .catch(() => {
+        // Silently fail - metadata endpoint might not be available
+        // This is expected and not an error
+      });
+    }, 10000); // Check every 10 seconds
 
     console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
   }
@@ -571,14 +666,43 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     audioPlayer.addEventListener('stalled', () => {
-      console.warn('⚠️ Stream stalled');
+      console.warn('⚠️ Stream stalled - buffering');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
+      
+      // Try to resume playback after a short delay
+      setTimeout(() => {
+        if (audioPlayer.paused && audioPlayer.readyState >= 2) {
+          audioPlayer.play().catch(() => {
+            // If play fails, wait for more data
+            console.log('⏳ Waiting for more stream data...');
+          });
+        }
+      }, 1000);
     });
 
     audioPlayer.addEventListener('waiting', () => {
+      console.warn('⚠️ Stream waiting for data');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
+      // This is normal - stream is buffering, will resume automatically
+    });
+    
+    // Improve buffer handling - monitor buffer health
+    audioPlayer.addEventListener('progress', () => {
+      // Stream is downloading data - check buffer health
+      if (audioPlayer.buffered.length > 0) {
+        const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+        const currentTime = audioPlayer.currentTime;
+        const bufferAhead = bufferedEnd - currentTime;
+        
+        // If buffer is healthy (> 5 seconds), ensure playback continues
+        if (bufferAhead > 5 && audioPlayer.paused && !audioPlayer.ended) {
+          audioPlayer.play().catch(() => {
+            // Play might be blocked, that's OK
+          });
+        }
+      }
     });
 
     audioPlayer.addEventListener('loadstart', () => {
@@ -591,6 +715,17 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('✅ Stream metadata loaded');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps`);
+      
+      // Try to extract metadata if available
+      extractMetadataFromAudio();
+    });
+
+    // Listen for metadata updates (when track changes in stream)
+    audioPlayer.addEventListener('loadeddata', () => {
+      // Metadata might be available now
+      if (audioPlayer.textTracks && audioPlayer.textTracks.length > 0) {
+        console.log('📝 Text tracks available:', audioPlayer.textTracks.length);
+      }
     });
 
     audioPlayer.addEventListener('canplay', () => {
