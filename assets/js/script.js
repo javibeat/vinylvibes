@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${baseUrl}/${mount}`;
   }
 
-  // Test if stream URL is accessible
+  // Test if stream URL is accessible (silent test, no console warnings)
   async function testStreamUrl(url) {
     return new Promise((resolve) => {
       const testAudio = new Audio();
@@ -68,17 +68,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!resolved) {
           resolved = true;
           testAudio.src = '';
-          console.warn(`⏱️ Timeout testing stream: ${url}`);
+          // Silent timeout - streams can take time to respond
           resolve(false);
         }
-      }, 5000); // 5 second timeout
+      }, 10000); // 10 second timeout (increased for slow connections)
 
       testAudio.addEventListener('canplay', () => {
         if (!resolved) {
           resolved = true;
           clearTimeout(timeout);
           testAudio.src = '';
-          console.log(`✅ Stream is accessible: ${url}`);
+          // Only log success, not failures (to reduce console noise)
           resolve(true);
         }
       });
@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
           resolved = true;
           clearTimeout(timeout);
           testAudio.src = '';
-          console.warn(`❌ Stream not accessible: ${url}`);
+          // Silent error - stream test is non-critical
           resolve(false);
         }
       });
@@ -259,36 +259,54 @@ document.addEventListener('DOMContentLoaded', () => {
       // Try to play if shouldAutoPlay is true
       if (shouldAutoPlay) {
         // Wait for stream to be ready before attempting play
+        let playAttempted = false;
         const attemptPlay = () => {
-          if (audioPlayer.readyState >= 2 || audioPlayer.readyState === 0) {
+          if (playAttempted) return;
+          
+          if (audioPlayer.readyState >= 1 || audioPlayer.readyState === 0) {
+            playAttempted = true;
             console.log(`▶️ Attempting to auto-play...`);
             audioPlayer.play().then(() => {
               console.log('✅ Auto-play successful');
             }).catch(err => {
-              console.warn('⚠️ Auto-play prevented:', err.name, err.message);
+              // Only log if it's not a user interaction error (normal browser behavior)
+              if (err.name !== 'NotAllowedError') {
+                console.warn('⚠️ Auto-play prevented:', err.name, err.message);
+              } else {
+                console.log('⚠️ Auto-play requires user interaction (normal browser behavior)');
+              }
               updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+              playAttempted = false; // Allow retry
             });
           } else {
             // Stream not ready yet, wait a bit more
             setTimeout(attemptPlay, 100);
           }
         };
+        
+        // Try multiple times with different delays
         setTimeout(attemptPlay, 200);
+        setTimeout(attemptPlay, 500);
+        setTimeout(attemptPlay, 1000);
+        
+        // Also listen to ready events
+        ['canplay', 'loadeddata'].forEach(eventName => {
+          audioPlayer.addEventListener(eventName, attemptPlay, { once: true });
+        });
       } else {
         updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
         console.log(`⏸️ Stream loaded, waiting for user to click play`);
       }
     }, 50);
 
-    // Test stream in background (non-blocking, for logging only)
+    // Test stream in background (silent, non-blocking, for logging only)
     testStreamUrl(streamUrl).then(isAccessible => {
-      if (!isAccessible) {
-        console.warn(`⚠️ Stream test failed: ${streamUrl} (but stream may still work)`);
-      } else {
+      // Only log success, failures are silent to reduce console noise
+      if (isAccessible) {
         console.log(`✅ Stream accessibility confirmed: ${streamUrl}`);
       }
-    }).catch(err => {
-      console.warn('Stream test error (non-critical):', err);
+    }).catch(() => {
+      // Silent catch - stream test is non-critical
     });
 
     // Set track name display (track info endpoints not available)
@@ -393,36 +411,47 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`🎯 Initial station: ${stationName} (ID: ${stationId})`);
 
     // Auto-play favorite station on page load
-    // Small delay to ensure page is loaded
+    // Use multiple events and retries for better success rate
     setTimeout(() => {
       switchStation(stationId, true);
-      // Wait for stream to be ready using canplay event
-      const playWhenReady = () => {
-        console.log('🎵 Stream ready, attempting auto-play...');
-        audioPlayer.play().then(() => {
-          console.log('✅ Auto-play successful on page load');
-        }).catch(err => {
-          console.log('⚠️ Auto-play prevented by browser (requires user interaction)');
-          updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-        });
+      
+      // Aggressive auto-play with multiple event listeners
+      let playAttempted = false;
+      const attemptAutoPlay = () => {
+        if (playAttempted) return;
+        
+        // Check if stream is ready
+        if (audioPlayer.readyState >= 1 || audioPlayer.readyState === 0) {
+          playAttempted = true;
+          console.log('🎵 Stream ready, attempting auto-play...');
+          
+          audioPlayer.play().then(() => {
+            console.log('✅ Auto-play successful on page load');
+          }).catch(err => {
+            // Browser blocked auto-play (normal behavior)
+            console.log('⚠️ Auto-play requires user interaction (normal browser behavior)');
+            updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+            playAttempted = false; // Allow retry on user interaction
+          });
+        }
       };
       
-      // Try to play when stream is ready
-      if (audioPlayer.readyState >= 2) {
-        // Already ready
-        setTimeout(playWhenReady, 500);
-      } else {
-        // Wait for canplay event
-        audioPlayer.addEventListener('canplay', playWhenReady, { once: true });
-        // Fallback timeout
-        setTimeout(() => {
-          audioPlayer.removeEventListener('canplay', playWhenReady);
-          if (audioPlayer.readyState >= 2) {
-            playWhenReady();
-          }
-        }, 5000);
+      // Try multiple events for better compatibility
+      const events = ['canplay', 'loadeddata', 'loadedmetadata', 'playing'];
+      events.forEach(eventName => {
+        audioPlayer.addEventListener(eventName, attemptAutoPlay, { once: true });
+      });
+      
+      // Immediate attempt if already ready
+      if (audioPlayer.readyState >= 1) {
+        setTimeout(attemptAutoPlay, 300);
       }
-    }, 1500);
+      
+      // Fallback attempts with increasing delays
+      [500, 1000, 2000, 3000].forEach(delay => {
+        setTimeout(attemptAutoPlay, delay);
+      });
+    }, 1000);
   }
 
   // Network status monitoring
