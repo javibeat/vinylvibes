@@ -396,23 +396,32 @@ document.addEventListener('DOMContentLoaded', () => {
     // Small delay to ensure page is loaded
     setTimeout(() => {
       switchStation(stationId, true);
-      // Wait for stream to be ready, then attempt auto-play
-      const attemptAutoPlay = () => {
-        if (audioPlayer.src && (audioPlayer.readyState >= 2 || audioPlayer.readyState === 0)) {
-          audioPlayer.play().then(() => {
-            console.log('✅ Auto-play successful on page load');
-          }).catch(err => {
-            console.log('⚠️ Auto-play prevented by browser (normal behavior)');
-            updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-          });
-        } else {
-          // Stream not ready yet, wait a bit more
-          setTimeout(attemptAutoPlay, 200);
-        }
+      // Wait for stream to be ready using canplay event
+      const playWhenReady = () => {
+        console.log('🎵 Stream ready, attempting auto-play...');
+        audioPlayer.play().then(() => {
+          console.log('✅ Auto-play successful on page load');
+        }).catch(err => {
+          console.log('⚠️ Auto-play prevented by browser (requires user interaction)');
+          updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+        });
       };
       
-      // Start attempting after a short delay
-      setTimeout(attemptAutoPlay, 1000);
+      // Try to play when stream is ready
+      if (audioPlayer.readyState >= 2) {
+        // Already ready
+        setTimeout(playWhenReady, 500);
+      } else {
+        // Wait for canplay event
+        audioPlayer.addEventListener('canplay', playWhenReady, { once: true });
+        // Fallback timeout
+        setTimeout(() => {
+          audioPlayer.removeEventListener('canplay', playWhenReady);
+          if (audioPlayer.readyState >= 2) {
+            playWhenReady();
+          }
+        }, 5000);
+      }
     }, 1500);
   }
 
