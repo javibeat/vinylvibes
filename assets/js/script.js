@@ -182,27 +182,55 @@ document.addEventListener('DOMContentLoaded', () => {
   // Fetch track info from Icecast (if available)
   async function fetchTrackInfo(baseUrl) {
     try {
-      // Try to fetch from Icecast status JSON
-      // This is a common endpoint for Icecast servers
-      const statusUrl = `${baseUrl}/status-json.xsl`;
+      // Try to fetch from Icecast status XML and parse it
+      // First try status-json.xsl, then status.xsl
+      let statusUrl = `${baseUrl}/status-json.xsl`;
+      let response = await fetch(statusUrl);
+      
+      if (!response.ok) {
+        // Fallback to status.xsl
+        statusUrl = `${baseUrl}/status.xsl`;
+        response = await fetch(statusUrl);
+      }
 
-      const response = await fetch(statusUrl);
       if (response.ok) {
-        const data = await response.json();
-        if (data.icestats && data.icestats.source) {
-          const source = Array.isArray(data.icestats.source)
-            ? data.icestats.source[0]
-            : data.icestats.source;
+        const text = await response.text();
+        
+        // Try to parse as JSON first
+        try {
+          const data = JSON.parse(text);
+          if (data.icestats && data.icestats.source) {
+            const source = Array.isArray(data.icestats.source)
+              ? data.icestats.source[0]
+              : data.icestats.source;
 
-          if (source.yp_currently_playing) {
-            return {
-              title: source.yp_currently_playing,
-              artwork: null // Icecast doesn't typically provide artwork
-            };
+            if (source.server_name || source.title) {
+              return {
+                title: source.title || source.server_name,
+                artwork: null
+              };
+            }
+          }
+        } catch (e) {
+          // If not JSON, try to parse XML
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(text, 'text/xml');
+          const sources = xmlDoc.querySelectorAll('source');
+          if (sources.length > 0) {
+            const source = sources[0];
+            const title = source.querySelector('title')?.textContent || 
+                         source.querySelector('server_name')?.textContent;
+            if (title) {
+              return {
+                title: title,
+                artwork: null
+              };
+            }
           }
         }
       }
     } catch (error) {
+      // Silently fail - track info is optional
       console.log('Track info not available:', error);
     }
     return null;
@@ -254,48 +282,55 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStation = stationId;
     currentBaseUrl = baseUrl;
 
-    // Test stream accessibility first
-    console.log(`🧪 Testing stream accessibility: ${streamUrl}`);
-    updatePlayerDisplay(stationName, 'Checking...', 'Verifying stream availability...');
+    // Set the source immediately to prevent errors
+    console.log(`🔗 Setting audio source to: ${streamUrl}`);
+    audioPlayer.src = streamUrl;
+    
+    // Verify the source was set correctly
+    if (audioPlayer.src !== streamUrl && audioPlayer.src !== streamUrl + '/') {
+      console.warn(`⚠️ Source mismatch. Expected: ${streamUrl}, Got: ${audioPlayer.src}`);
+      // Force set it again
+      audioPlayer.src = '';
+      setTimeout(() => {
+        audioPlayer.src = streamUrl;
+      }, 10);
+    }
 
+    // Load the stream immediately (don't wait for test)
+    updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
+    
+    setTimeout(() => {
+      console.log(`📥 Loading audio element...`);
+      console.log(`✅ Verified audio source: ${audioPlayer.src}`);
+      audioPlayer.load();
+
+      // Try to play if was playing before
+      if (wasPlaying) {
+        setTimeout(() => {
+          console.log(`▶️ Attempting to play...`);
+          audioPlayer.play().catch(err => {
+            console.warn('⚠️ Auto-play prevented:', err.name, err.message);
+            updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+          });
+        }, 100);
+      } else {
+        updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
+        console.log(`⏸️ Stream loaded, waiting for user to click play`);
+      }
+    }, 50);
+
+    // Test stream in background (non-blocking, for logging only)
     testStreamUrl(streamUrl).then(isAccessible => {
       if (!isAccessible) {
-        console.error(`❌ Stream not accessible: ${streamUrl}`);
-        updatePlayerDisplay(stationName, 'Unavailable', 'Stream not accessible. Check server or try different quality.');
-        console.warn('💡 Tips:');
-        console.warn('   1. Verify the stream is running on the server');
-        console.warn('   2. Check if CORS is enabled on the server');
-        console.warn('   3. Try opening the URL directly in browser:', streamUrl);
-            console.warn('   4. Check if stream is accessible');
-        return;
+        console.warn(`⚠️ Stream test failed: ${streamUrl} (but stream may still work)`);
+      } else {
+        console.log(`✅ Stream accessibility confirmed: ${streamUrl}`);
       }
-
-      // Load new stream
-      console.log(`🔗 Setting audio source to: ${streamUrl}`);
-      audioPlayer.src = streamUrl;
-
-      // Wait a bit before loading to ensure source is set
-      setTimeout(() => {
-        console.log(`📥 Loading audio element...`);
-        audioPlayer.load();
-
-        // Try to play if was playing before
-        if (wasPlaying) {
-          setTimeout(() => {
-            console.log(`▶️ Attempting to play...`);
-            audioPlayer.play().catch(err => {
-              console.warn('⚠️ Auto-play prevented:', err.name, err.message);
-              updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-            });
-          }, 100);
-        } else {
-          updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
-          console.log(`⏸️ Stream loaded, waiting for user to click play`);
-        }
-      }, 50);
+    }).catch(err => {
+      console.warn('Stream test error (non-critical):', err);
     });
 
-    // Try to fetch track info
+    // Try to fetch track info (optional, don't block on errors)
     fetchTrackInfo(baseUrl).then(info => {
       if (info && info.title) {
         if (trackNameDisplay) {
@@ -307,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     }).catch(err => {
-      console.log('Track info not available:', err);
+      // Silently fail - track info is optional
       if (trackNameDisplay) {
         trackNameDisplay.textContent = `Now playing on ${stationName}`;
       }
