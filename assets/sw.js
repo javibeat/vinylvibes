@@ -1,7 +1,7 @@
-// Service Worker para Vinyl Beats Radio
+// Service Worker para Vinyl Vibes Radio
 // Proporciona funcionalidad offline y caché de recursos
 
-const CACHE_NAME = 'vinyl-beats-radio-v1';
+const CACHE_NAME = 'vinyl-vibes-radio-v1';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

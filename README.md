@@ -1,4 +1,4 @@
-# Vinyl Beats Radio
+# Vinyl Vibes Radio
 
 Pure house music 24/7. No commercials, just curated house sounds.
 
@@ -76,5 +76,5 @@ The site is configured for GitHub Pages. Ensure:
 
 ## License
 
-© 2025 Vinyl Beats Radio · Design and technology by javibeat
+© 2025 Vinyl Vibes Radio · Design and technology by javibeat
 

@@ -1,4 +1,4 @@
-// Vinyl Beats Radio - Interactive features
+// Vinyl Vibes Radio - Interactive features
 // ----------------------------------
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: stationName,
-        artist: 'Vinyl Beats Radio',
+        artist: 'Vinyl Vibes Radio',
         album: 'Pure House Music 24/7',
         artwork: [
           { src: '/assets/icons/favicon.svg', sizes: '512x512', type: 'image/svg+xml' }
@@ -179,59 +179,129 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Track if track info endpoints are available (cache to avoid repeated 404s)
+  let trackInfoAvailable = null; // null = unknown, true = available, false = not available
+  let trackInfoCheckAttempted = false; // Track if we've tried to check at least once
+
   // Fetch track info from Icecast (if available)
   async function fetchTrackInfo(baseUrl) {
+    // If we've already determined that track info is not available, skip silently
+    if (trackInfoAvailable === false) {
+      return null;
+    }
+
+    // Only try once per page load to avoid repeated 404s
+    if (!trackInfoCheckAttempted) {
+      trackInfoCheckAttempted = true;
+    } else if (trackInfoAvailable === null) {
+      // If we've tried before and still don't know, assume it's not available
+      trackInfoAvailable = false;
+      return null;
+    }
+
     try {
       // Try to fetch from Icecast status XML and parse it
       // First try status-json.xsl, then status.xsl
       let statusUrl = `${baseUrl}/status-json.xsl`;
-      let response = await fetch(statusUrl);
+      let response;
+      
+      try {
+        // Use a timeout to avoid hanging requests
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        response = await fetch(statusUrl, { 
+          method: 'HEAD', // Use HEAD first to check if endpoint exists
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+      } catch (err) {
+        // If HEAD fails or times out, mark as unavailable
+        trackInfoAvailable = false;
+        return null;
+      }
       
       if (!response.ok) {
         // Fallback to status.xsl
         statusUrl = `${baseUrl}/status.xsl`;
-        response = await fetch(statusUrl);
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          
+          response = await fetch(statusUrl, { 
+            method: 'HEAD',
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+        } catch (err) {
+          // Both endpoints don't exist or timeout, mark as unavailable
+          trackInfoAvailable = false;
+          return null;
+        }
       }
 
       if (response.ok) {
-        const text = await response.text();
+        // Mark as available if we get here
+        trackInfoAvailable = true;
         
-        // Try to parse as JSON first
+        // Now try to get the actual data with GET
         try {
-          const data = JSON.parse(text);
-          if (data.icestats && data.icestats.source) {
-            const source = Array.isArray(data.icestats.source)
-              ? data.icestats.source[0]
-              : data.icestats.source;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          
+          const dataResponse = await fetch(statusUrl, { 
+            signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+          
+          if (dataResponse.ok) {
+            const text = await dataResponse.text();
+            
+            // Try to parse as JSON first
+            try {
+              const data = JSON.parse(text);
+              if (data.icestats && data.icestats.source) {
+                const source = Array.isArray(data.icestats.source)
+                  ? data.icestats.source[0]
+                  : data.icestats.source;
 
-            if (source.server_name || source.title) {
-              return {
-                title: source.title || source.server_name,
-                artwork: null
-              };
+                if (source.server_name || source.title) {
+                  return {
+                    title: source.title || source.server_name,
+                    artwork: null
+                  };
+                }
+              }
+            } catch (e) {
+              // If not JSON, try to parse XML
+              const parser = new DOMParser();
+              const xmlDoc = parser.parseFromString(text, 'text/xml');
+              const sources = xmlDoc.querySelectorAll('source');
+              if (sources.length > 0) {
+                const source = sources[0];
+                const title = source.querySelector('title')?.textContent || 
+                             source.querySelector('server_name')?.textContent;
+                if (title) {
+                  return {
+                    title: title,
+                    artwork: null
+                  };
+                }
+              }
             }
           }
-        } catch (e) {
-          // If not JSON, try to parse XML
-          const parser = new DOMParser();
-          const xmlDoc = parser.parseFromString(text, 'text/xml');
-          const sources = xmlDoc.querySelectorAll('source');
-          if (sources.length > 0) {
-            const source = sources[0];
-            const title = source.querySelector('title')?.textContent || 
-                         source.querySelector('server_name')?.textContent;
-            if (title) {
-              return {
-                title: title,
-                artwork: null
-              };
-            }
-          }
+        } catch (dataErr) {
+          // Failed to get data, but endpoint exists
+          return null;
         }
+      } else {
+        // Both endpoints returned errors, mark as unavailable
+        trackInfoAvailable = false;
       }
     } catch (error) {
       // Silently fail - track info is optional
-      console.log('Track info not available:', error);
+      // Mark as unavailable after first error
+      trackInfoAvailable = false;
     }
     return null;
   }
@@ -348,21 +418,31 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Start periodic track info updates
+    // Start periodic track info updates (only if track info is available)
     if (trackInfoInterval) {
       clearInterval(trackInfoInterval);
     }
-    trackInfoInterval = setInterval(() => {
-      if (currentBaseUrl) {
-        fetchTrackInfo(currentBaseUrl).then(info => {
-          if (info && info.title && trackNameDisplay) {
-            trackNameDisplay.textContent = info.title;
-          }
-        }).catch(() => {
-          // Silently fail - track info is optional
-        });
-      }
-    }, 10000); // Update every 10 seconds
+    // Only set up interval if track info endpoints are available
+    if (trackInfoAvailable !== false) {
+      trackInfoInterval = setInterval(() => {
+        // Stop trying if we've determined it's not available
+        if (trackInfoAvailable === false) {
+          clearInterval(trackInfoInterval);
+          return;
+        }
+        if (currentBaseUrl) {
+          fetchTrackInfo(currentBaseUrl).then(info => {
+            if (info && info.title && trackNameDisplay) {
+              trackNameDisplay.textContent = info.title;
+            }
+          }).catch(() => {
+            // Silently fail - track info is optional
+            trackInfoAvailable = false;
+            clearInterval(trackInfoInterval);
+          });
+        }
+      }, 10000); // Update every 10 seconds
+    }
 
     console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
   }
@@ -407,7 +487,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Save favorite when switching stations
       setFavoriteStation(stationId);
-      switchStation(stationId, false);
+      // Auto-play when switching stations
+      switchStation(stationId, true);
     });
   });
 
@@ -453,21 +534,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log(`🎯 Initial station: ${stationName} (ID: ${stationId})`);
 
-    // Auto-play favorite station if it was playing before
-    const wasPlaying = localStorage.getItem('wasPlaying') === 'true';
-    if (wasPlaying && stationId === favoriteStationId) {
-      // Small delay to ensure page is loaded
+    // Auto-play favorite station on page load
+    // Small delay to ensure page is loaded
+    setTimeout(() => {
+      switchStation(stationId, true);
       setTimeout(() => {
-        switchStation(stationId, true);
-        setTimeout(() => {
-          audioPlayer.play().catch(err => {
-            console.log('Auto-play prevented, user interaction required');
-          });
-        }, 500);
-      }, 1000);
-    } else {
-      updatePlayerDisplay(stationName, 'Ready', 'Select a station and click play');
-    }
+        audioPlayer.play().catch(err => {
+          console.log('Auto-play prevented, user interaction required');
+          updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+        });
+      }, 500);
+    }, 1000);
   }
 
   // Network status monitoring
@@ -691,29 +768,17 @@ document.addEventListener('DOMContentLoaded', () => {
     audioPlayer.addEventListener('play', () => {
       console.log('🎵 Play event fired');
       customPlayBtn.classList.add('playing');
-      const playIcon = customPlayBtn.querySelector('.play-icon');
-      if (playIcon) {
-        playIcon.textContent = '⏸';
-      }
     });
 
     audioPlayer.addEventListener('pause', () => {
       console.log('⏸️ Pause event fired');
       customPlayBtn.classList.remove('playing');
-      const playIcon = customPlayBtn.querySelector('.play-icon');
-      if (playIcon) {
-        playIcon.textContent = '▶';
-      }
     });
 
     // Also listen for 'playing' event to ensure state is correct
     audioPlayer.addEventListener('playing', () => {
       console.log('🎵 Playing event fired - audio is actually playing');
       customPlayBtn.classList.add('playing');
-      const playIcon = customPlayBtn.querySelector('.play-icon');
-      if (playIcon) {
-        playIcon.textContent = '⏸';
-      }
     });
   }
 

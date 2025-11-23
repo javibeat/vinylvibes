@@ -586,12 +586,17 @@ body {
   font-size: 1.2rem;
   margin-left: 2px;
   display: inline-block;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  visibility: visible;
 }
 
 .custom-play-btn.playing .play-icon {
   opacity: 0;
+  visibility: hidden;
   position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 .custom-play-btn.playing::after {
@@ -603,6 +608,7 @@ body {
   top: 50%;
   transform: translate(-50%, -50%);
   margin-left: 0;
+  display: block;
 }
 
 .volume-control {
