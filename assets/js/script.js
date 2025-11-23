@@ -299,15 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }, 50);
 
-    // Test stream in background (silent, non-blocking, for logging only)
-    testStreamUrl(streamUrl).then(isAccessible => {
-      // Only log success, failures are silent to reduce console noise
-      if (isAccessible) {
-        console.log(`✅ Stream accessibility confirmed: ${streamUrl}`);
-      }
-    }).catch(() => {
-      // Silent catch - stream test is non-critical
-    });
+    // Stream test disabled to prevent 404 errors - streams work without testing
 
     // Set track name display (track info endpoints not available)
     if (trackNameDisplay) {
