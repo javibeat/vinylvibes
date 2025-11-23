@@ -509,6 +509,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Paused', '');
 
+      // Update play button icon
+      if (customPlayBtn) {
+        customPlayBtn.classList.remove('playing');
+      }
+
       // Save paused state
       localStorage.setItem('wasPlaying', 'false');
     });
@@ -632,39 +637,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Play/Pause button handler
   if (customPlayBtn && audioPlayer) {
-    customPlayBtn.addEventListener('click', () => {
+    customPlayBtn.addEventListener('click', async () => {
+      console.log('🔘 Play/Pause button clicked');
+      console.log(`📊 Audio state - paused: ${audioPlayer.paused}, src: ${audioPlayer.src}`);
+      
       if (audioPlayer.paused) {
-        if (!audioPlayer.src || audioPlayer.src === '') {
+        // Try to play
+        if (!audioPlayer.src || audioPlayer.src === '' || audioPlayer.src === window.location.href) {
           // No stream selected, load the current station
+          console.log('📻 No stream loaded, loading current station...');
           if (currentStation) {
             switchStation(currentStation, true);
-            setTimeout(() => {
-              audioPlayer.play().catch(err => {
-                console.warn('Play prevented:', err);
-              });
+            setTimeout(async () => {
+              try {
+                await audioPlayer.play();
+                console.log('✅ Audio playing after station switch');
+              } catch (err) {
+                console.warn('⚠️ Play prevented:', err);
+                updatePlayerDisplay(
+                  currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+                  'Ready',
+                  'Click play to start'
+                );
+              }
             }, 500);
           } else {
-            console.warn('No station selected');
+            console.warn('❌ No station selected');
           }
         } else {
-          audioPlayer.play().catch(err => {
-            console.warn('Play prevented:', err);
-          });
+          // Stream is loaded, try to play
+          console.log('▶️ Attempting to play stream...');
+          try {
+            await audioPlayer.play();
+            console.log('✅ Audio playing successfully');
+          } catch (err) {
+            console.warn('⚠️ Play prevented:', err.name, err.message);
+            updatePlayerDisplay(
+              currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+              'Ready',
+              'Click play to start'
+            );
+          }
         }
-        customPlayBtn.classList.add('playing');
       } else {
+        // Audio is playing, pause it
+        console.log('⏸️ Pausing audio...');
         audioPlayer.pause();
-        customPlayBtn.classList.remove('playing');
+        console.log('✅ Audio paused');
       }
     });
 
     // Update button state when audio plays/pauses
     audioPlayer.addEventListener('play', () => {
+      console.log('🎵 Play event fired');
       customPlayBtn.classList.add('playing');
+      const playIcon = customPlayBtn.querySelector('.play-icon');
+      if (playIcon) {
+        playIcon.textContent = '⏸';
+      }
     });
 
     audioPlayer.addEventListener('pause', () => {
+      console.log('⏸️ Pause event fired');
       customPlayBtn.classList.remove('playing');
+      const playIcon = customPlayBtn.querySelector('.play-icon');
+      if (playIcon) {
+        playIcon.textContent = '▶';
+      }
+    });
+
+    // Also listen for 'playing' event to ensure state is correct
+    audioPlayer.addEventListener('playing', () => {
+      console.log('🎵 Playing event fired - audio is actually playing');
+      customPlayBtn.classList.add('playing');
+      const playIcon = customPlayBtn.querySelector('.play-icon');
+      if (playIcon) {
+        playIcon.textContent = '⏸';
+      }
     });
   }
 

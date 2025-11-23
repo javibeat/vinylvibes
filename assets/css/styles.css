@@ -577,14 +577,31 @@ body {
   transform: scale(0.95);
 }
 
+.custom-play-btn {
+  position: relative;
+}
+
 .custom-play-btn .play-icon {
   color: #ffffff;
   font-size: 1.2rem;
   margin-left: 2px;
+  display: inline-block;
+  transition: opacity 0.2s ease;
 }
 
-.custom-play-btn.playing .play-icon::before {
+.custom-play-btn.playing .play-icon {
+  opacity: 0;
+  position: absolute;
+}
+
+.custom-play-btn.playing::after {
   content: '⏸';
+  position: absolute;
+  color: #ffffff;
+  font-size: 1.2rem;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   margin-left: 0;
 }
 
