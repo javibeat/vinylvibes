@@ -302,11 +302,48 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Track info is disabled - endpoints don't exist on this Icecast server
-  // This function is kept for future use but always returns null to avoid 404 errors
-  async function fetchTrackInfo(baseUrl) {
-    // Disabled - endpoints not available on this server
-    return null;
+  // Fetch track info from Icecast stats endpoint
+  async function fetchTrackInfo(baseUrl, mountName) {
+    try {
+      const mount = `${mountName}${currentQuality}`;
+      const statsUrl = `${baseUrl}/admin/stats.xml`;
+
+      const response = await fetch(statsUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Authorization': 'Basic ' + btoa('admin:vinyl2024')
+        }
+      });
+
+      if (!response.ok) {
+        console.warn(`⚠️ Stats endpoint returned ${response.status}`);
+        return null;
+      }
+
+      const xmlText = await response.text();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+
+      // Find the source element for our mount
+      const sources = xmlDoc.getElementsByTagName('source');
+      for (let source of sources) {
+        const mountAttr = source.getAttribute('mount');
+        if (mountAttr === `/${mount}`) {
+          const titleElement = source.getElementsByTagName('title')[0];
+          if (titleElement && titleElement.textContent) {
+            const trackTitle = titleElement.textContent.trim();
+            console.log(`🎵 Metadata from Icecast: ${trackTitle}`);
+            return { title: trackTitle };
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      console.warn('Could not fetch track info from Icecast:', e);
+      return null;
+    }
   }
 
   // Switch station
@@ -427,12 +464,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // Track info will be updated via metadata events
     updateTrackInfo(stationName);
 
-    // Track info interval disabled - metadata endpoints not available on this server
-    // This prevents 404 errors from status-json.xsl
+    // Enable track info polling from Icecast stats
     if (trackInfoInterval) {
       clearInterval(trackInfoInterval);
-      trackInfoInterval = null;
     }
+
+    // Poll metadata every 10 seconds
+    trackInfoInterval = setInterval(async () => {
+      const trackInfo = await fetchTrackInfo(baseUrl, mountName);
+      if (trackInfo && trackInfo.title) {
+        updateTrackInfo(stationName, trackInfo.title);
+      }
+    }, 10000);
+
+    // Fetch immediately on station switch
+    setTimeout(async () => {
+      const trackInfo = await fetchTrackInfo(baseUrl, mountName);
+      if (trackInfo && trackInfo.title) {
+        updateTrackInfo(stationName, trackInfo.title);
+      }
+    }, 1000);
 
     console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
   }
