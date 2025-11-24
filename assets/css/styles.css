@@ -91,6 +91,9 @@
 
 html {
   scroll-behavior: smooth;
+  /* Prevent zoom on mobile devices */
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
 }
 
 body {
@@ -105,6 +108,26 @@ body {
   overflow-x: hidden;
   transition: background-color 0.3s ease, color 0.3s ease;
   padding-bottom: 80px; /* Space for fixed player */
+  /* Prevent zoom on mobile devices */
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Allow text selection in specific elements */
+input, textarea, .station-name, .track-name, .current-station {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Prevent double-tap zoom on iOS */
+* {
+  touch-action: manipulation;
 }
 
 /* HEADER */

@@ -1,6 +1,49 @@
 // Vinyl Vibes Radio - Interactive features
 // ----------------------------------
 
+// Prevent zoom on mobile devices (especially iOS)
+(function() {
+  let lastTouchEnd = 0;
+  
+  // Prevent double-tap zoom on iOS
+  document.addEventListener('touchend', function(event) {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) {
+      event.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, false);
+  
+  // Prevent pinch zoom
+  let initialDistance = 0;
+  document.addEventListener('touchstart', function(event) {
+    if (event.touches.length === 2) {
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+      initialDistance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+    }
+  }, { passive: true });
+  
+  document.addEventListener('touchmove', function(event) {
+    if (event.touches.length === 2) {
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+      const currentDistance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      
+      // If pinch gesture detected, prevent default
+      if (Math.abs(currentDistance - initialDistance) > 10) {
+        event.preventDefault();
+      }
+    }
+  }, { passive: false });
+})();
+
 document.addEventListener('DOMContentLoaded', () => {
   // Theme management
   const themeToggle = document.getElementById('themeToggle');
