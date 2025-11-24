@@ -771,60 +771,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // Also try to get metadata from the stream URL directly (Icecast status)
-    // This is a fallback method
-    async function fetchStreamMetadata() {
-      if (!currentBaseUrl || !currentStation) return;
-      
-      try {
-        // Try to get metadata from Icecast status endpoint
-        const statusUrl = `${currentBaseUrl}/status-json.xsl`;
-        const response = await fetch(statusUrl, { 
-          mode: 'cors',
-          cache: 'no-cache'
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          // Parse Icecast status JSON to find current track
-          if (data.icestats && data.icestats.source) {
-            const sources = Array.isArray(data.icestats.source) 
-              ? data.icestats.source 
-              : [data.icestats.source];
-            
-            const mountName = `${currentStation}${currentQuality}`;
-            const source = sources.find(s => s.server_name && s.listenurl && s.listenurl.includes(mountName));
-            
-            if (source && source.server_name) {
-              const trackTitle = source.server_name;
-              const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
-              updateTrackInfo(stationName, trackTitle);
-            }
-          }
-        }
-      } catch (e) {
-        // Silently fail - metadata endpoint might not be available
-        // This is expected and not an error
-      }
-    }
-
-    // Periodically try to fetch metadata (every 10 seconds)
-    let metadataInterval = null;
-    audioPlayer.addEventListener('play', () => {
-      // Start fetching metadata when playback starts
-      if (!metadataInterval) {
-        metadataInterval = setInterval(fetchStreamMetadata, 10000);
-        fetchStreamMetadata(); // Initial fetch
-      }
-    });
-
-    audioPlayer.addEventListener('pause', () => {
-      // Stop fetching metadata when paused
-      if (metadataInterval) {
-        clearInterval(metadataInterval);
-        metadataInterval = null;
-      }
-    });
+    // Metadata is obtained via ICY protocol through textTracks (see loadstart event above)
+    // No need to fetch from status-json.xsl endpoint as it's not available on this server
 
     audioPlayer.addEventListener('canplay', () => {
       console.log('✅ Stream ready to play');
