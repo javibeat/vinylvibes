@@ -1,22 +1,26 @@
 // Vinyl Vibes Radio - Interactive features
 // ----------------------------------
 
-// Prevent zoom on mobile devices (especially iOS)
+// Prevent zoom on mobile devices (especially iOS) - STRICT
 (function() {
   let lastTouchEnd = 0;
+  let initialDistance = 0;
+  let touchStartTime = 0;
   
   // Prevent double-tap zoom on iOS
   document.addEventListener('touchend', function(event) {
     const now = Date.now();
     if (now - lastTouchEnd <= 300) {
       event.preventDefault();
+      event.stopPropagation();
+      return false;
     }
     lastTouchEnd = now;
-  }, false);
+  }, { passive: false });
   
-  // Prevent pinch zoom
-  let initialDistance = 0;
+  // Prevent pinch zoom - STRICT
   document.addEventListener('touchstart', function(event) {
+    touchStartTime = Date.now();
     if (event.touches.length === 2) {
       const touch1 = event.touches[0];
       const touch2 = event.touches[1];
@@ -24,8 +28,11 @@
         touch2.clientX - touch1.clientX,
         touch2.clientY - touch1.clientY
       );
+      // Prevent default immediately for two-finger touches
+      event.preventDefault();
+      event.stopPropagation();
     }
-  }, { passive: true });
+  }, { passive: false });
   
   document.addEventListener('touchmove', function(event) {
     if (event.touches.length === 2) {
@@ -37,10 +44,31 @@
       );
       
       // If pinch gesture detected, prevent default
-      if (Math.abs(currentDistance - initialDistance) > 10) {
+      if (Math.abs(currentDistance - initialDistance) > 5) {
         event.preventDefault();
+        event.stopPropagation();
+        return false;
       }
     }
+  }, { passive: false });
+  
+  // Prevent gesturestart (iOS Safari)
+  document.addEventListener('gesturestart', function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }, { passive: false });
+  
+  document.addEventListener('gesturechange', function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
+  }, { passive: false });
+  
+  document.addEventListener('gestureend', function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    return false;
   }, { passive: false });
 })();
 
@@ -633,11 +661,38 @@ document.addEventListener('DOMContentLoaded', () => {
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
       
+      // More aggressive recovery: reload the stream if stalled for too long
+      let stalledTimeout = setTimeout(() => {
+        if (audioPlayer.readyState < 2) {
+          console.log('🔄 Stream stalled for too long, reloading...');
+          const currentSrc = audioPlayer.src;
+          audioPlayer.src = '';
+          setTimeout(() => {
+            audioPlayer.src = currentSrc;
+            audioPlayer.load();
+            if (!audioPlayer.paused) {
+              audioPlayer.play().catch(() => {
+                console.log('⏳ Waiting for stream to be ready...');
+              });
+            }
+          }, 500);
+        }
+      }, 3000);
+      
+      // Clear timeout if stream recovers
+      const checkRecovery = () => {
+        if (audioPlayer.readyState >= 2 && !audioPlayer.paused) {
+          clearTimeout(stalledTimeout);
+        }
+      };
+      
+      audioPlayer.addEventListener('playing', checkRecovery, { once: true });
+      audioPlayer.addEventListener('canplay', checkRecovery, { once: true });
+      
       // Try to resume playback after a short delay
       setTimeout(() => {
         if (audioPlayer.paused && audioPlayer.readyState >= 2) {
           audioPlayer.play().catch(() => {
-            // If play fails, wait for more data
             console.log('⏳ Waiting for more stream data...');
           });
         }
@@ -696,7 +751,31 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('⚠️ Stream waiting for data');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
-      // This is normal - stream is buffering, will resume automatically
+      
+      // Try to help the stream recover by checking buffer health
+      const checkBuffer = () => {
+        if (audioPlayer.buffered.length > 0) {
+          const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+          const currentTime = audioPlayer.currentTime;
+          const bufferAhead = bufferedEnd - currentTime;
+          
+          if (bufferAhead < 1 && audioPlayer.readyState < 3) {
+            // Very low buffer, try to reload
+            console.log('🔄 Buffer very low, attempting recovery...');
+            const currentSrc = audioPlayer.src;
+            audioPlayer.src = '';
+            setTimeout(() => {
+              audioPlayer.src = currentSrc;
+              audioPlayer.load();
+              if (!audioPlayer.paused) {
+                audioPlayer.play().catch(() => {});
+              }
+            }, 500);
+          }
+        }
+      };
+      
+      setTimeout(checkBuffer, 2000);
     });
     
     // Improve buffer handling - monitor buffer health
@@ -736,47 +815,68 @@ document.addEventListener('DOMContentLoaded', () => {
       // Metadata might be available now
       if (audioPlayer.textTracks && audioPlayer.textTracks.length > 0) {
         console.log('📝 Text tracks available:', audioPlayer.textTracks.length);
+        // Immediately try to setup metadata tracking
+        setupMetadataTracking();
       }
     });
 
     // Listen for ICY metadata updates from Icecast stream
     // Icecast sends metadata via ICY protocol, which browsers expose through textTracks
+    let metadataTrackingSetup = false;
+    
     function setupMetadataTracking() {
+      if (metadataTrackingSetup) {
+        console.log('📝 Metadata tracking already setup, skipping...');
+        return;
+      }
+      
       console.log('🔍 Setting up metadata tracking...');
       
       // Method 1: Listen for textTracks when they become available
-      if (audioPlayer.textTracks) {
+      if (audioPlayer.textTracks && audioPlayer.textTracks.length > 0) {
         console.log(`📝 Found ${audioPlayer.textTracks.length} text tracks`);
         
         for (let i = 0; i < audioPlayer.textTracks.length; i++) {
           const track = audioPlayer.textTracks[i];
           console.log(`📝 Track ${i}: kind=${track.kind}, label=${track.label}, mode=${track.mode}`);
           
-          if (track.kind === 'metadata' || track.kind === 'subtitles') {
-            track.mode = 'hidden'; // Enable metadata track
+          // Try ALL tracks, not just metadata (some browsers use different kinds)
+          if (track.kind === 'metadata' || track.kind === 'subtitles' || track.kind === 'chapters' || track.label === '') {
+            // Enable the track
+            if (track.mode === 'disabled') {
+              track.mode = 'hidden';
+            }
             
-            track.addEventListener('cuechange', () => {
-              console.log('📝 Cue change detected on track:', track.kind);
+            // Function to process cues
+            const processCues = () => {
               if (track.activeCues && track.activeCues.length > 0) {
                 for (let j = 0; j < track.activeCues.length; j++) {
                   const cue = track.activeCues[j];
-                  console.log(`📝 Cue ${j}:`, cue.text);
+                  const metadataText = cue.text || '';
+                  
+                  if (metadataText.trim() === '') continue;
+                  
+                  console.log(`📝 Cue ${j} from track ${i}:`, metadataText.substring(0, 100));
                   
                   try {
-                    // Parse ICY metadata (format: StreamTitle='Artist - Title';StreamUrl='...')
-                    const metadataText = cue.text || '';
-                    console.log('📝 Raw metadata text:', metadataText);
-                    
                     // Try different parsing methods
                     let trackTitle = null;
                     
                     // Method 1: Standard ICY format
-                    const titleMatch = metadataText.match(/StreamTitle='([^']+)'/);
+                    const titleMatch = metadataText.match(/StreamTitle=['"]([^'"]+)['"]/);
                     if (titleMatch && titleMatch[1]) {
                       trackTitle = titleMatch[1].trim();
                     }
                     
-                    // Method 2: Try JSON format
+                    // Method 2: Try without quotes
+                    if (!trackTitle) {
+                      const titleMatch2 = metadataText.match(/StreamTitle=([^;]+)/);
+                      if (titleMatch2 && titleMatch2[1]) {
+                        trackTitle = titleMatch2[1].trim().replace(/^['"]|['"]$/g, '');
+                      }
+                    }
+                    
+                    // Method 3: Try JSON format
                     if (!trackTitle) {
                       try {
                         const jsonData = JSON.parse(metadataText);
@@ -786,24 +886,33 @@ document.addEventListener('DOMContentLoaded', () => {
                       }
                     }
                     
-                    // Method 3: Try plain text
-                    if (!trackTitle && metadataText.trim() !== '') {
+                    // Method 4: Try plain text (if it looks like a title)
+                    if (!trackTitle && metadataText.trim() !== '' && metadataText.length < 200) {
                       trackTitle = metadataText.trim();
                     }
                     
-                    if (trackTitle) {
+                    if (trackTitle && trackTitle !== 'Unknown Track' && trackTitle.length > 0) {
                       console.log('🎵 Track metadata received:', trackTitle);
                       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
                       updateTrackInfo(stationName, trackTitle);
+                      metadataTrackingSetup = true; // Mark as setup
                     }
                   } catch (e) {
                     console.warn('⚠️ Error parsing metadata:', e);
                   }
                 }
               }
-            });
+            };
+            
+            // Listen for cue changes
+            track.addEventListener('cuechange', processCues);
+            
+            // Also check immediately if cues are already available
+            setTimeout(processCues, 500);
           }
         }
+      } else {
+        console.log('📝 No text tracks found yet, will retry...');
       }
       
       // Method 2: Listen for new tracks being added
@@ -811,30 +920,34 @@ document.addEventListener('DOMContentLoaded', () => {
         audioPlayer.textTracks.addEventListener('addtrack', (event) => {
           const track = event.track;
           console.log('📝 New track added:', track.kind, track.label);
-          if (track.kind === 'metadata') {
+          if (track.mode === 'disabled') {
             track.mode = 'hidden';
-            track.addEventListener('cuechange', () => {
-              if (track.activeCues && track.activeCues.length > 0) {
-                const cue = track.activeCues[0];
-                const metadataText = cue.text || '';
-                const titleMatch = metadataText.match(/StreamTitle='([^']+)'/);
-                if (titleMatch && titleMatch[1]) {
-                  const trackTitle = titleMatch[1].trim();
-                  console.log('🎵 Track metadata received (new track):', trackTitle);
-                  const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
-                  updateTrackInfo(stationName, trackTitle);
-                }
-              }
-            });
           }
+          track.addEventListener('cuechange', () => {
+            if (track.activeCues && track.activeCues.length > 0) {
+              const cue = track.activeCues[0];
+              const metadataText = cue.text || '';
+              const titleMatch = metadataText.match(/StreamTitle=['"]([^'"]+)['"]/);
+              if (titleMatch && titleMatch[1]) {
+                const trackTitle = titleMatch[1].trim();
+                console.log('🎵 Track metadata received (new track):', trackTitle);
+                const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
+                updateTrackInfo(stationName, trackTitle);
+              }
+            }
+          });
         });
       }
     }
 
-    // Setup metadata tracking when stream loads
+    // Setup metadata tracking when stream loads - try multiple times
     audioPlayer.addEventListener('loadstart', () => {
       console.log('📡 Stream loadstart - setting up metadata tracking');
-      setTimeout(setupMetadataTracking, 100); // Small delay to ensure textTracks are ready
+      metadataTrackingSetup = false; // Reset on new stream
+      setTimeout(setupMetadataTracking, 100);
+      setTimeout(setupMetadataTracking, 500);
+      setTimeout(setupMetadataTracking, 1000);
+      setTimeout(setupMetadataTracking, 2000);
     });
 
     // Also try when metadata is loaded
@@ -847,6 +960,11 @@ document.addEventListener('DOMContentLoaded', () => {
     audioPlayer.addEventListener('loadeddata', () => {
       console.log('📡 Data loaded - checking for text tracks');
       setupMetadataTracking();
+    });
+    
+    // Try when stream starts playing
+    audioPlayer.addEventListener('playing', () => {
+      setTimeout(setupMetadataTracking, 1000);
     });
 
     // Check stream headers for ICY metadata support when stream loads
