@@ -98,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Quality management
   const qualityToggle = document.getElementById('qualityToggle');
   const qualityValue = document.getElementById('qualityValue');
-  let currentQuality = parseInt(localStorage.getItem('audioQuality')) || 320; // Default to 320 kbps
+  let currentQuality = parseInt(localStorage.getItem('audioQuality')) || 192; // Default to 192 kbps for better stability
 
   // Update quality display
   function updateQualityDisplay() {
@@ -352,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Optimized buffer monitoring
+  // Optimized buffer monitoring - ULTRA OPTIMIZADO
   function startBufferMonitoring() {
     if (bufferCheckInterval) {
       clearInterval(bufferCheckInterval);
@@ -367,12 +367,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentTime = audioPlayer.currentTime;
         const bufferAhead = bufferedEnd - currentTime;
 
-        // If buffer is getting low (< 3 seconds), try to pre-buffer
-        if (bufferAhead < 3 && bufferAhead > 0) {
-          console.log(`⚠️ Buffer bajo: ${bufferAhead.toFixed(1)}s - Pre-buffering...`);
-          // Force buffer by seeking slightly forward (if possible)
-          if (audioPlayer.readyState >= 2) {
-            audioPlayer.load(); // Reload to force buffer
+        // Buffer mínimo aumentado a 10 segundos para evitar cortes
+        // Si el buffer es menor a 10 segundos, activar pre-buffering agresivo
+        if (bufferAhead < 10 && bufferAhead > 0) {
+          console.log(`⚠️ Buffer bajo: ${bufferAhead.toFixed(1)}s - Pre-buffering agresivo...`);
+          
+          // Estrategia mejorada: no recargar, sino pausar brevemente para acumular buffer
+          if (audioPlayer.readyState >= 2 && bufferAhead < 5) {
+            // Si el buffer es crítico (< 5s), pausar 2 segundos para acumular
+            const wasPlaying = !audioPlayer.paused;
+            if (wasPlaying) {
+              audioPlayer.pause();
+              setTimeout(() => {
+                if (wasPlaying && audioPlayer.buffered.length > 0) {
+                  const newBuffer = audioPlayer.buffered.end(audioPlayer.buffered.length - 1) - audioPlayer.currentTime;
+                  if (newBuffer > 5) {
+                    audioPlayer.play().catch(() => {});
+                  } else {
+                    // Buffer aún bajo, intentar reconexión
+                    attemptReconnection();
+                  }
+                }
+              }, 2000);
+            }
           }
         }
 
@@ -380,15 +397,15 @@ document.addEventListener('DOMContentLoaded', () => {
         lastBufferTime = bufferAhead;
       }
 
-      // Monitor network state
+      // Monitor network state - más tolerante
       if (audioPlayer.networkState === 2 || audioPlayer.networkState === 3) {
-        // Network error or no source
-        if (!isReconnecting && !audioPlayer.paused) {
+        // Network error or no source - solo reconectar si realmente hay problema
+        if (!isReconnecting && !audioPlayer.paused && audioPlayer.readyState < 2) {
           console.warn('⚠️ Network issue detected, attempting recovery...');
           attemptReconnection();
         }
       }
-    }, 2000); // Check every 2 seconds
+    }, 1000); // Check every 1 second for faster response
   }
 
   function stopBufferMonitoring() {
@@ -515,10 +532,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Set the source directly
     console.log(`🔗 Setting audio source to: ${streamUrl}`);
-    audioPlayer.src = streamUrl;
-
-    // Configure audio player for optimal streaming
+    
+    // Configure audio player for optimal streaming - ULTRA OPTIMIZADO
     audioPlayer.preload = 'auto';
+    // Aumentar buffer del navegador (si está disponible)
+    if (audioPlayer.buffered && audioPlayer.buffered.length > 0) {
+      // Forzar pre-buffering antes de cambiar de fuente
+      audioPlayer.load();
+    }
+    
+    audioPlayer.src = streamUrl;
     
     // Load the stream immediately
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
