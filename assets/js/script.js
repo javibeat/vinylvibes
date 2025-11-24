@@ -643,38 +643,48 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    let stalledTimeout = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 3;
+    
     audioPlayer.addEventListener('stalled', () => {
       console.warn('⚠️ Stream stalled - buffering');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
-      updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
+      updatePlayerDisplay(stationName, 'Buffering...', 'Reconnecting...');
       
-      // More aggressive recovery: reload the stream if stalled for too long
-      let stalledTimeout = setTimeout(() => {
-        if (audioPlayer.readyState < 2) {
-          console.log('🔄 Stream stalled for too long, reloading...');
+      // Clear any existing timeout
+      if (stalledTimeout) {
+        clearTimeout(stalledTimeout);
+      }
+      
+      // More aggressive recovery: reload the stream if stalled
+      stalledTimeout = setTimeout(() => {
+        if (audioPlayer.readyState < 3 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          reconnectAttempts++;
+          console.log(`🔄 Stream stalled, attempting reconnect ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
           const currentSrc = audioPlayer.src;
+          const wasPlaying = !audioPlayer.paused;
+          
+          audioPlayer.pause();
           audioPlayer.src = '';
+          
           setTimeout(() => {
             audioPlayer.src = currentSrc;
             audioPlayer.load();
-            if (!audioPlayer.paused) {
-              audioPlayer.play().catch(() => {
-                console.log('⏳ Waiting for stream to be ready...');
-              });
+            
+            if (wasPlaying) {
+              setTimeout(() => {
+                audioPlayer.play().catch(() => {
+                  console.log('⏳ Waiting for stream to be ready...');
+                });
+              }, 500);
             }
           }, 500);
+        } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+          console.error('❌ Max reconnection attempts reached');
+          updatePlayerDisplay(stationName, 'Connection Lost', 'Please refresh the page');
         }
-      }, 3000);
-      
-      // Clear timeout if stream recovers
-      const checkRecovery = () => {
-        if (audioPlayer.readyState >= 2 && !audioPlayer.paused) {
-          clearTimeout(stalledTimeout);
-        }
-      };
-      
-      audioPlayer.addEventListener('playing', checkRecovery, { once: true });
-      audioPlayer.addEventListener('canplay', checkRecovery, { once: true });
+      }, 2000); // Reduced from 3000 to 2000 for faster recovery
       
       // Try to resume playback after a short delay
       setTimeout(() => {
@@ -684,6 +694,15 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
       }, 1000);
+    });
+    
+    // Reset reconnect attempts on successful playback
+    audioPlayer.addEventListener('playing', () => {
+      if (stalledTimeout) {
+        clearTimeout(stalledTimeout);
+        stalledTimeout = null;
+      }
+      reconnectAttempts = 0; // Reset on successful play
     });
 
     // Improve reconnection handling for stream interruptions
@@ -878,11 +897,12 @@ document.addEventListener('DOMContentLoaded', () => {
                       trackTitle = metadataText.trim();
                     }
                     
-                    if (trackTitle && trackTitle !== 'Unknown Track' && trackTitle.length > 0) {
+                    if (trackTitle && trackTitle !== 'Unknown Track' && trackTitle.length > 0 && trackTitle !== stationName) {
                       console.log('🎵 Track metadata received:', trackTitle);
                       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
                       updateTrackInfo(stationName, trackTitle);
                       metadataTrackingSetup = true; // Mark as setup
+                      return; // Exit once we found valid metadata
                     }
                   } catch (e) {
                     console.warn('⚠️ Error parsing metadata:', e);
@@ -894,8 +914,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // Listen for cue changes
             track.addEventListener('cuechange', processCues);
             
+            // Force check cues periodically since cuechange may not fire reliably
+            const cueCheckInterval = setInterval(() => {
+              if (track.activeCues && track.activeCues.length > 0) {
+                processCues();
+                clearInterval(cueCheckInterval); // Stop checking once we get metadata
+              }
+            }, 1000);
+            
+            // Stop checking after 30 seconds
+            setTimeout(() => clearInterval(cueCheckInterval), 30000);
+            
             // Also check immediately if cues are already available
             setTimeout(processCues, 500);
+            setTimeout(processCues, 2000);
+            setTimeout(processCues, 5000);
           }
         }
       } else {
