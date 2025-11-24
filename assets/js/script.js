@@ -667,8 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   let stalledTimeout = null;
-  let reconnectAttempts = 0;
-  const MAX_RECONNECT_ATTEMPTS = 3;
+  // reconnectAttempts and MAX_RECONNECT_ATTEMPTS already declared at top of file
 
   audioPlayer.addEventListener('stalled', () => {
     // Don't aggressively try to recover for stalled streams
