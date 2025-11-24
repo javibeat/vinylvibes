@@ -741,38 +741,138 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Listen for ICY metadata updates from Icecast stream
     // Icecast sends metadata via ICY protocol, which browsers expose through textTracks
-    audioPlayer.addEventListener('loadstart', () => {
-      // Enable metadata tracks when stream starts loading
+    function setupMetadataTracking() {
+      console.log('🔍 Setting up metadata tracking...');
+      
+      // Method 1: Listen for textTracks when they become available
       if (audioPlayer.textTracks) {
+        console.log(`📝 Found ${audioPlayer.textTracks.length} text tracks`);
+        
         for (let i = 0; i < audioPlayer.textTracks.length; i++) {
           const track = audioPlayer.textTracks[i];
-          if (track.kind === 'metadata') {
+          console.log(`📝 Track ${i}: kind=${track.kind}, label=${track.label}, mode=${track.mode}`);
+          
+          if (track.kind === 'metadata' || track.kind === 'subtitles') {
             track.mode = 'hidden'; // Enable metadata track
+            
             track.addEventListener('cuechange', () => {
+              console.log('📝 Cue change detected on track:', track.kind);
               if (track.activeCues && track.activeCues.length > 0) {
-                const cue = track.activeCues[0];
-                try {
-                  // Parse ICY metadata (format: StreamTitle='Artist - Title';StreamUrl='...')
-                  const metadataText = cue.text || '';
-                  const titleMatch = metadataText.match(/StreamTitle='([^']+)'/);
-                  if (titleMatch && titleMatch[1]) {
-                    const trackTitle = titleMatch[1].trim();
-                    console.log('🎵 Track metadata received:', trackTitle);
-                    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
-                    updateTrackInfo(stationName, trackTitle);
+                for (let j = 0; j < track.activeCues.length; j++) {
+                  const cue = track.activeCues[j];
+                  console.log(`📝 Cue ${j}:`, cue.text);
+                  
+                  try {
+                    // Parse ICY metadata (format: StreamTitle='Artist - Title';StreamUrl='...')
+                    const metadataText = cue.text || '';
+                    console.log('📝 Raw metadata text:', metadataText);
+                    
+                    // Try different parsing methods
+                    let trackTitle = null;
+                    
+                    // Method 1: Standard ICY format
+                    const titleMatch = metadataText.match(/StreamTitle='([^']+)'/);
+                    if (titleMatch && titleMatch[1]) {
+                      trackTitle = titleMatch[1].trim();
+                    }
+                    
+                    // Method 2: Try JSON format
+                    if (!trackTitle) {
+                      try {
+                        const jsonData = JSON.parse(metadataText);
+                        trackTitle = jsonData.StreamTitle || jsonData.title || jsonData.song || null;
+                      } catch (e) {
+                        // Not JSON, continue
+                      }
+                    }
+                    
+                    // Method 3: Try plain text
+                    if (!trackTitle && metadataText.trim() !== '') {
+                      trackTitle = metadataText.trim();
+                    }
+                    
+                    if (trackTitle) {
+                      console.log('🎵 Track metadata received:', trackTitle);
+                      const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
+                      updateTrackInfo(stationName, trackTitle);
+                    }
+                  } catch (e) {
+                    console.warn('⚠️ Error parsing metadata:', e);
                   }
-                } catch (e) {
-                  console.warn('⚠️ Error parsing metadata:', e);
                 }
               }
             });
           }
         }
       }
+      
+      // Method 2: Listen for new tracks being added
+      if (audioPlayer.textTracks) {
+        audioPlayer.textTracks.addEventListener('addtrack', (event) => {
+          const track = event.track;
+          console.log('📝 New track added:', track.kind, track.label);
+          if (track.kind === 'metadata') {
+            track.mode = 'hidden';
+            track.addEventListener('cuechange', () => {
+              if (track.activeCues && track.activeCues.length > 0) {
+                const cue = track.activeCues[0];
+                const metadataText = cue.text || '';
+                const titleMatch = metadataText.match(/StreamTitle='([^']+)'/);
+                if (titleMatch && titleMatch[1]) {
+                  const trackTitle = titleMatch[1].trim();
+                  console.log('🎵 Track metadata received (new track):', trackTitle);
+                  const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
+                  updateTrackInfo(stationName, trackTitle);
+                }
+              }
+            });
+          }
+        });
+      }
+    }
+
+    // Setup metadata tracking when stream loads
+    audioPlayer.addEventListener('loadstart', () => {
+      console.log('📡 Stream loadstart - setting up metadata tracking');
+      setTimeout(setupMetadataTracking, 100); // Small delay to ensure textTracks are ready
     });
 
-    // Metadata is obtained via ICY protocol through textTracks (see loadstart event above)
-    // No need to fetch from status-json.xsl endpoint as it's not available on this server
+    // Also try when metadata is loaded
+    audioPlayer.addEventListener('loadedmetadata', () => {
+      console.log('📡 Metadata loaded - checking for text tracks');
+      setupMetadataTracking();
+    });
+
+    // Try when data is loaded
+    audioPlayer.addEventListener('loadeddata', () => {
+      console.log('📡 Data loaded - checking for text tracks');
+      setupMetadataTracking();
+    });
+
+    // Check stream headers for ICY metadata support when stream loads
+    audioPlayer.addEventListener('loadstart', async () => {
+      if (!audioPlayer.src) return;
+      
+      try {
+        // Check if stream supports ICY metadata
+        const response = await fetch(audioPlayer.src, {
+          method: 'HEAD',
+          headers: {
+            'Icy-MetaData': '1'
+          }
+        });
+        
+        const icyMetaInt = response.headers.get('icy-metaint');
+        if (icyMetaInt) {
+          console.log('✅ Stream supports ICY metadata (interval:', icyMetaInt, 'bytes)');
+        } else {
+          console.log('⚠️ Stream does not support ICY metadata headers');
+        }
+      } catch (e) {
+        // CORS or other error - this is expected for some streams
+        console.log('📝 Could not check ICY metadata support (CORS may block this)');
+      }
+    });
 
     audioPlayer.addEventListener('canplay', () => {
       console.log('✅ Stream ready to play');
