@@ -691,53 +691,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const MAX_RECONNECT_ATTEMPTS = 3;
 
     audioPlayer.addEventListener('stalled', () => {
-      console.warn('⚠️ Stream stalled - buffering');
+      // Don't aggressively try to recover for stalled streams
+      // Modern browsers handle this well on their own
+      if (audioPlayer.paused) return;
+
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
-      updatePlayerDisplay(stationName, 'Buffering...', 'Reconnecting...');
-
-      // Clear any existing timeout
-      if (stalledTimeout) {
-        clearTimeout(stalledTimeout);
-      }
-
-      // More aggressive recovery: reload the stream if stalled
-      stalledTimeout = setTimeout(() => {
-        if (audioPlayer.paused) return; // Don't recover if user paused
-
-        if (audioPlayer.readyState < 3 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttempts++;
-          console.log(`🔄 Stream stalled, attempting reconnect ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
-          const currentSrc = audioPlayer.src;
-          const wasPlaying = !audioPlayer.paused;
-
-          audioPlayer.pause();
-          audioPlayer.src = '';
-
-          setTimeout(() => {
-            audioPlayer.src = currentSrc;
-            audioPlayer.load();
-
-            if (wasPlaying) {
-              setTimeout(() => {
-                audioPlayer.play().catch(() => {
-                  console.log('⏳ Waiting for stream to be ready...');
-                });
-              }, 500);
-            }
-          }, 500);
-        } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-          updatePlayerDisplay(stationName, 'Connection Lost', 'Please refresh the page');
-        }
-      }, 5000); // Increased from 2000 to 5000 to reduce aggressive reloading
-
-      // Try to resume playback after a short delay
-      setTimeout(() => {
-        if (audioPlayer.paused && audioPlayer.readyState >= 2) {
-          audioPlayer.play().catch(() => {
-            console.log('⏳ Waiting for more stream data...');
-          });
-        }
-      }, 1000);
+      updatePlayerDisplay(stationName, 'Buffering...', 'Stream loading...');
     });
 
     // Reset reconnect attempts on successful playback
@@ -806,42 +765,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
 
-      // Slight delay then try to resume
+      // Slight delay then try to resume - but DON'T clear the src
       setTimeout(() => {
         if (audioPlayer.paused) return;
+        // Just try to play, don't manipulate the src at all
         if (audioPlayer.readyState >= 2) {
           audioPlayer.play().catch(() => {
             // Play might be blocked, that's OK
           });
         }
-      }, 1000);
-
-      // Try to help the stream recover by checking buffer health
-      const checkBuffer = () => {
-        if (audioPlayer.buffered.length > 0) {
-          const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
-          const currentTime = audioPlayer.currentTime;
-          const bufferAhead = bufferedEnd - currentTime;
-
-          if (bufferAhead < 1 && audioPlayer.readyState < 3) {
-            if (audioPlayer.paused) return; // Don't recover if user paused
-
-            // Very low buffer, try to reload
-            console.log('🔄 Buffer very low, attempting recovery...');
-            const currentSrc = audioPlayer.src;
-            audioPlayer.src = '';
-            setTimeout(() => {
-              audioPlayer.src = currentSrc;
-              audioPlayer.load();
-              if (!audioPlayer.paused) {
-                audioPlayer.play().catch(() => { });
-              }
-            }, 500);
-          }
-        }
-      };
-
-      setTimeout(checkBuffer, 2000);
+      }, 1500);
     });
 
     // Improve buffer handling - monitor buffer health
