@@ -359,10 +359,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const stationName = button.querySelector('.station-name').textContent;
     const streamUrl = buildStreamUrl(baseUrl, mountName, currentQuality);
 
-    console.log(`🔄 Switching to ${stationName}`);
-    console.log(`📍 Base URL: ${baseUrl}`);
-    console.log(`🎵 Stream URL: ${streamUrl}`);
-    console.log(`📊 Quality: ${currentQuality} kbps`);
+    // console.log(`🔄 Switching to ${stationName}`);
+    // console.log(`📍 Base URL: ${baseUrl}`);
+    // console.log(`🎵 Stream URL: ${streamUrl}`);
+    // console.log(`📊 Quality: ${currentQuality} kbps`);
 
     // If keepPlaying is true, we want to auto-play regardless of current state
     const shouldAutoPlay = keepPlaying;
@@ -412,8 +412,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
 
     setTimeout(() => {
-      console.log(`📥 Loading audio element...`);
-      console.log(`✅ Verified audio source: ${audioPlayer.src}`);
+      // console.log('📥 Loading audio element...');
+      // console.log('✅ Verified audio source:', audioPlayer.src);
       audioPlayer.load();
 
       // Try to play if shouldAutoPlay is true
@@ -464,26 +464,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Track info will be updated via metadata events
     updateTrackInfo(stationName);
 
-    // Enable track info polling from Icecast stats
+    // Metadata polling DISABLED - /admin/stats.xml endpoint blocked by Cloudflare (502)
+    // Track info will rely on ICY metadata from stream (if available)
     if (trackInfoInterval) {
       clearInterval(trackInfoInterval);
+      trackInfoInterval = null;
     }
-
-    // Poll metadata every 10 seconds
-    trackInfoInterval = setInterval(async () => {
-      const trackInfo = await fetchTrackInfo(baseUrl, mountName);
-      if (trackInfo && trackInfo.title) {
-        updateTrackInfo(stationName, trackInfo.title);
-      }
-    }, 10000);
-
-    // Fetch immediately on station switch
-    setTimeout(async () => {
-      const trackInfo = await fetchTrackInfo(baseUrl, mountName);
-      if (trackInfo && trackInfo.title) {
-        updateTrackInfo(stationName, trackInfo.title);
-      }
-    }, 1000);
 
     console.log(`✅ Switched to ${stationName} - ${currentQuality} kbps`);
   }
@@ -601,9 +587,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
 
-      // Save playing state for auto-resume
-      localStorage.setItem('wasPlaying', 'true');
-
       // Enable background playback
       if ('mediaSession' in navigator) {
         navigator.mediaSession.setActionHandler('play', () => {
@@ -624,9 +607,6 @@ document.addEventListener('DOMContentLoaded', () => {
       if (customPlayBtn) {
         customPlayBtn.classList.remove('playing');
       }
-
-      // Save paused state
-      localStorage.setItem('wasPlaying', 'false');
     });
 
     audioPlayer.addEventListener('playing', () => {
@@ -664,6 +644,7 @@ document.addEventListener('DOMContentLoaded', () => {
               if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
                 console.log(`🔄 Retry attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
                 reconnectTimeout = setTimeout(() => {
+                  if (audioPlayer.paused) return; // Don't reconnect if user paused
                   audioPlayer.load();
                   audioPlayer.play().catch(() => {
                     updatePlayerDisplay(stationName, 'Ready', 'Click play to retry');
@@ -819,9 +800,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     audioPlayer.addEventListener('waiting', () => {
-      console.warn('⚠️ Stream waiting for data');
+      // Only show buffering message if not paused by user
+      if (audioPlayer.paused) return;
+
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
+
+      // Slight delay then try to resume
+      setTimeout(() => {
+        if (audioPlayer.paused) return;
+        if (audioPlayer.readyState >= 2) {
+          audioPlayer.play().catch(() => {
+            // Play might be blocked, that's OK
+          });
+        }
+      }, 1000);
 
       // Try to help the stream recover by checking buffer health
       const checkBuffer = () => {
@@ -875,7 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     audioPlayer.addEventListener('loadedmetadata', () => {
-      console.log('✅ Stream metadata loaded');
+      // console.log('✅ Stream metadata loaded');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps`);
 
@@ -887,7 +880,7 @@ document.addEventListener('DOMContentLoaded', () => {
     audioPlayer.addEventListener('loadeddata', () => {
       // Metadata might be available now
       if (audioPlayer.textTracks && audioPlayer.textTracks.length > 0) {
-        console.log('📝 Text tracks available:', audioPlayer.textTracks.length);
+        // console.log(`📝 Text tracks available: ${audioPlayer.textTracks.length}`);
         // Immediately try to setup metadata tracking
         setupMetadataTracking();
       }
@@ -999,7 +992,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       } else {
-        console.log('📝 No text tracks found yet, will retry...');
+        // console.log('📝 No text tracks found yet, will retry...');
       }
 
       // Method 2: Listen for new tracks being added
@@ -1028,28 +1021,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Setup metadata tracking when stream loads - optimized to avoid too many calls
-    audioPlayer.addEventListener('loadstart', () => {
-      console.log('📡 Stream loadstart - setting up metadata tracking');
-      metadataTrackingSetup = false; // Reset on new stream
-      // Only try a few times with reasonable delays
-      setTimeout(setupMetadataTracking, 500);
-      setTimeout(setupMetadataTracking, 2000);
-    });
-
-    // Also try when metadata is loaded
-    audioPlayer.addEventListener('loadedmetadata', () => {
-      console.log('📡 Metadata loaded - checking for text tracks');
-      setupMetadataTracking();
-    });
-
-    // Try when data is loaded
+    // Simplified metadata tracking - only attempt once when stream loads
     audioPlayer.addEventListener('loadeddata', () => {
-      console.log('📡 Data loaded - checking for text tracks');
-      setupMetadataTracking();
-    });
-
-    // Try when stream starts playing
-    audioPlayer.addEventListener('playing', () => {
+      if (metadataTrackingSetup) return;
       setTimeout(setupMetadataTracking, 1000);
     });
 
