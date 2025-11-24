@@ -535,12 +535,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Configure audio player for optimal streaming - ULTRA OPTIMIZADO
     audioPlayer.preload = 'auto';
-    // Aumentar buffer del navegador (si está disponible)
-    if (audioPlayer.buffered && audioPlayer.buffered.length > 0) {
-      // Forzar pre-buffering antes de cambiar de fuente
-      audioPlayer.load();
-    }
     
+    // Ensure volume is set before loading
+    if (volumeSlider) {
+      audioPlayer.volume = volumeSlider.value / 100;
+    }
+    audioPlayer.muted = false;
+    
+    // Set source and load
     audioPlayer.src = streamUrl;
     
     // Load the stream immediately
@@ -1082,9 +1084,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   audioPlayer.addEventListener('canplay', () => {
     console.log('✅ Stream ready to play');
+    console.log(`📊 ReadyState: ${audioPlayer.readyState}, Volume: ${audioPlayer.volume}`);
     const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
     if (audioPlayer.paused) {
       updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
+    }
+    // Ensure volume is set
+    if (audioPlayer.volume === 0 && volumeSlider) {
+      audioPlayer.volume = volumeSlider.value / 100;
     }
   });
 
@@ -1129,16 +1136,59 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           // Stream is loaded, try to play
           console.log('▶️ Attempting to play stream...');
+          console.log(`📊 ReadyState: ${audioPlayer.readyState}, Volume: ${audioPlayer.volume}, Muted: ${audioPlayer.muted}`);
+          
+          // Ensure volume is not 0
+          if (audioPlayer.volume === 0) {
+            audioPlayer.volume = volumeSlider ? volumeSlider.value / 100 : 0.8;
+            console.log(`🔊 Volume was 0, set to ${audioPlayer.volume}`);
+          }
+          
+          // Ensure not muted
+          if (audioPlayer.muted) {
+            audioPlayer.muted = false;
+            console.log('🔊 Unmuted audio');
+          }
+          
+          // Wait for readyState if needed
+          if (audioPlayer.readyState < 2) {
+            console.log('⏳ Waiting for stream to be ready...');
+            await new Promise((resolve) => {
+              const checkReady = () => {
+                if (audioPlayer.readyState >= 2) {
+                  resolve();
+                } else {
+                  setTimeout(checkReady, 100);
+                }
+              };
+              checkReady();
+            });
+          }
+          
           try {
             await audioPlayer.play();
             console.log('✅ Audio playing successfully');
-          } catch (err) {
-            console.warn('⚠️ Play prevented:', err.name, err.message);
             updatePlayerDisplay(
               currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
-              'Ready',
-              'Click play to start'
+              'Playing',
+              `Quality: ${currentQuality} kbps`
             );
+          } catch (err) {
+            console.warn('⚠️ Play prevented:', err.name, err.message);
+            // Try one more time after a short delay
+            setTimeout(async () => {
+              try {
+                await audioPlayer.play();
+                console.log('✅ Audio playing on retry');
+              } catch (retryErr) {
+                console.error('❌ Play failed on retry:', retryErr);
+                updatePlayerDisplay(
+                  currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+                  'Error',
+                  'Click play again'
+                );
+              }
+            }, 500);
           }
         }
       } else {
