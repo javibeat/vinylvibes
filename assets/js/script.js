@@ -387,10 +387,12 @@ document.addEventListener('DOMContentLoaded', () => {
         lastBufferTime = bufferAhead;
       }
 
-      // Monitor network state - más tolerante
-      if (audioPlayer.networkState === 2 || audioPlayer.networkState === 3) {
-        // Network error or no source - solo reconectar si realmente hay problema
-        if (!isReconnecting && !audioPlayer.paused && audioPlayer.readyState < 2) {
+      // Monitor network state - más tolerante y solo cuando realmente hay problema
+      // networkState 2 = NETWORK_IDLE (esperando datos), 3 = NETWORK_NO_SOURCE (sin fuente)
+      // Solo considerar error si readyState es 0 (no hay información) y está intentando reproducir
+      if (audioPlayer.networkState === 3 && audioPlayer.readyState === 0 && !audioPlayer.paused) {
+        // Realmente no hay fuente - solo entonces reconectar
+        if (!isReconnecting) {
           console.warn('⚠️ Network issue detected, attempting recovery...');
           attemptReconnection();
         }
@@ -1096,9 +1098,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   audioPlayer.addEventListener('canplay', () => {
     console.log('✅ Stream ready to play');
+    console.log(`📊 ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}`);
     const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
     if (audioPlayer.paused) {
       updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
+    }
+    // Asegurar volumen
+    if (audioPlayer.volume === 0 && volumeSlider) {
+      audioPlayer.volume = volumeSlider.value / 100 || 0.8;
+    }
+    if (audioPlayer.muted) {
+      audioPlayer.muted = false;
     }
   });
 
@@ -1146,16 +1156,76 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           // Stream is loaded, try to play
           console.log('▶️ Attempting to play stream...');
+          console.log(`📊 ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Volume: ${audioPlayer.volume}`);
+          
+          // Asegurar que el volumen no sea 0
+          if (audioPlayer.volume === 0 && volumeSlider) {
+            audioPlayer.volume = volumeSlider.value / 100 || 0.8;
+          }
+          
+          // Asegurar que no esté silenciado
+          if (audioPlayer.muted) {
+            audioPlayer.muted = false;
+          }
+          
+          // Esperar a que el stream esté listo si no lo está
+          if (audioPlayer.readyState < 2) {
+            console.log('⏳ Esperando a que el stream esté listo...');
+            await new Promise((resolve) => {
+              const checkReady = () => {
+                if (audioPlayer.readyState >= 2) {
+                  resolve();
+                } else if (audioPlayer.readyState === 0 && audioPlayer.networkState === 3) {
+                  // No hay datos, esperar un poco más
+                  setTimeout(checkReady, 500);
+                } else {
+                  setTimeout(checkReady, 100);
+                }
+              };
+              checkReady();
+            });
+          }
+          
           try {
+            // Asegurarse de que no se esté cargando mientras se intenta reproducir
+            if (audioPlayer.networkState === 1) {
+              // NETWORK_LOADING - esperar un momento
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
+            
             await audioPlayer.play();
             console.log('✅ Audio playing successfully');
-          } catch (err) {
-            console.warn('⚠️ Play prevented:', err.name, err.message);
             updatePlayerDisplay(
               currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
-              'Ready',
-              'Click play to start'
+              'Playing',
+              `Quality: ${currentQuality} kbps`
             );
+          } catch (err) {
+            // Solo loggear si no es un error común de autoplay
+            if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
+              console.warn('⚠️ Play prevented:', err.name, err.message);
+            }
+            
+            // Si es AbortError, intentar de nuevo después de un momento
+            if (err.name === 'AbortError') {
+              console.log('🔄 AbortError detectado, reintentando en 500ms...');
+              setTimeout(async () => {
+                try {
+                  await audioPlayer.play();
+                  console.log('✅ Audio playing on retry');
+                } catch (retryErr) {
+                  if (retryErr.name !== 'NotAllowedError') {
+                    console.warn('⚠️ Play failed on retry:', retryErr.name);
+                  }
+                }
+              }, 500);
+            } else {
+              updatePlayerDisplay(
+                currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+                'Ready',
+                'Click play to start'
+              );
+            }
           }
         }
       } else {
