@@ -213,11 +213,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentStation = null;
   let currentBaseUrl = null;
   let reconnectAttempts = 0;
-  const MAX_RECONNECT_ATTEMPTS = 5;
+  const MAX_RECONNECT_ATTEMPTS = 10; // Aumentado para más intentos
   let reconnectTimeout = null;
   let trackInfoInterval = null;
   let stalledTimeout = null;
-  let isReconnecting = false; // <-- AÑADIDO: variable que antes usabas sin declarar
+  let isReconnecting = false;
+  let bufferCheckInterval = null;
+  let lastBufferTime = 0;
+  let networkQuality = 'good'; // 'good', 'slow', 'offline'
 
   // Update player display
   function updatePlayerDisplay(stationName, status, streamInfo = '') {
@@ -349,6 +352,120 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Optimized buffer monitoring
+  function startBufferMonitoring() {
+    if (bufferCheckInterval) {
+      clearInterval(bufferCheckInterval);
+    }
+
+    bufferCheckInterval = setInterval(() => {
+      if (!audioPlayer || !audioPlayer.src || audioPlayer.paused) return;
+
+      // Check buffer health
+      if (audioPlayer.buffered.length > 0) {
+        const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+        const currentTime = audioPlayer.currentTime;
+        const bufferAhead = bufferedEnd - currentTime;
+
+        // If buffer is getting low (< 3 seconds), try to pre-buffer
+        if (bufferAhead < 3 && bufferAhead > 0) {
+          console.log(`⚠️ Buffer bajo: ${bufferAhead.toFixed(1)}s - Pre-buffering...`);
+          // Force buffer by seeking slightly forward (if possible)
+          if (audioPlayer.readyState >= 2) {
+            audioPlayer.load(); // Reload to force buffer
+          }
+        }
+
+        // Track buffer time for network quality detection
+        lastBufferTime = bufferAhead;
+      }
+
+      // Monitor network state
+      if (audioPlayer.networkState === 2 || audioPlayer.networkState === 3) {
+        // Network error or no source
+        if (!isReconnecting && !audioPlayer.paused) {
+          console.warn('⚠️ Network issue detected, attempting recovery...');
+          attemptReconnection();
+        }
+      }
+    }, 2000); // Check every 2 seconds
+  }
+
+  function stopBufferMonitoring() {
+    if (bufferCheckInterval) {
+      clearInterval(bufferCheckInterval);
+      bufferCheckInterval = null;
+    }
+  }
+
+  // Improved reconnection function
+  function attemptReconnection() {
+    if (isReconnecting || audioPlayer.paused) return;
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error('❌ Máximo de intentos de reconexión alcanzado');
+      updatePlayerDisplay(
+        currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+        'Error',
+        'Problema de conexión - Intenta recargar'
+      );
+      return;
+    }
+
+    isReconnecting = true;
+    reconnectAttempts++;
+
+    // Clear any existing timeout
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+    }
+
+    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
+    updatePlayerDisplay(stationName, 'Reconectando...', `Intento ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
+
+    // Exponential backoff: 1s, 2s, 4s, 8s, etc. (max 10s)
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 10000);
+
+    reconnectTimeout = setTimeout(() => {
+      if (audioPlayer.paused || !currentStation) {
+        isReconnecting = false;
+        return;
+      }
+
+      console.log(`🔄 Intento de reconexión ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
+
+      // Try to reload the stream
+      const currentSrc = audioPlayer.src;
+      if (currentSrc) {
+        // Force reload by temporarily clearing and resetting
+        audioPlayer.load();
+        
+        // Try to play after a short delay
+        setTimeout(() => {
+          if (!audioPlayer.paused) {
+            audioPlayer.play().then(() => {
+              console.log('✅ Reconexión exitosa');
+              isReconnecting = false;
+              reconnectAttempts = 0;
+              updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
+            }).catch(err => {
+              console.warn('⚠️ Error al reproducir después de reconexión:', err);
+              // Will retry on next interval if still having issues
+              isReconnecting = false;
+            });
+          } else {
+            isReconnecting = false;
+          }
+        }, 500);
+      } else {
+        // No source, try to switch station again
+        if (currentStation) {
+          switchStation(currentStation, true);
+        }
+        isReconnecting = false;
+      }
+    }, delay);
+  }
+
   // Switch station
   function switchStation(stationId, keepPlaying = false) {
     const button = document.querySelector(`[data-station="${stationId}"]`);
@@ -362,15 +479,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const stationName = button.querySelector('.station-name').textContent;
     const streamUrl = buildStreamUrl(baseUrl, mountName, currentQuality);
 
-    // console.log(`🔄 Switching to ${stationName}`);
-    // console.log(`📍 Base URL: ${baseUrl}`);
-    // console.log(`🎵 Stream URL: ${streamUrl}`);
-    // console.log(`📊 Quality: ${currentQuality} kbps`);
-
-    // If keepPlaying is true, we want to auto-play regardless of current state
-    const shouldAutoPlay = keepPlaying;
-    const wasPlaying = !audioPlayer.paused;
+    // Reset reconnection state
     reconnectAttempts = 0;
+    isReconnecting = false;
+    networkQuality = 'good';
 
     // Clear any pending reconnection
     if (reconnectTimeout) {
@@ -378,8 +490,13 @@ document.addEventListener('DOMContentLoaded', () => {
       reconnectTimeout = null;
     }
 
-    // Stop current playback
-    audioPlayer.pause();
+    // Stop buffer monitoring temporarily
+    stopBufferMonitoring();
+
+    // Stop current playback smoothly
+    if (!audioPlayer.paused) {
+      audioPlayer.pause();
+    }
 
     // Update active state
     stationButtons.forEach(btn => btn.classList.remove('active'));
@@ -396,36 +513,43 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStation = stationId;
     currentBaseUrl = baseUrl;
 
-    // Set the source directly - no clearing or validation needed
+    // Set the source directly
     console.log(`🔗 Setting audio source to: ${streamUrl}`);
     audioPlayer.src = streamUrl;
 
-    // Load the stream immediately (don't wait for test)
+    // Configure audio player for optimal streaming
+    audioPlayer.preload = 'auto';
+    
+    // Load the stream immediately
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
 
     setTimeout(() => {
-      // console.log('📥 Loading audio element...');
-      // console.log('✅ Verified audio source:', audioPlayer.src);
       audioPlayer.load();
 
+      // Start buffer monitoring
+      startBufferMonitoring();
+
       // Try to play if shouldAutoPlay is true
-      if (shouldAutoPlay) {
+      if (keepPlaying) {
         // Wait for stream to be ready before attempting play
         let playAttempted = false;
         const attemptPlay = () => {
-          if (playAttempted) return;
+          if (playAttempted && audioPlayer.readyState < 2) return;
 
-          if (audioPlayer.readyState >= 1 || audioPlayer.readyState === 0) {
-            playAttempted = true;
-            console.log(`▶️ Attempting to auto-play...`);
+          if (audioPlayer.readyState >= 1) {
+            if (!playAttempted) {
+              playAttempted = true;
+              console.log(`▶️ Attempting to auto-play...`);
+            }
+            
             audioPlayer.play().then(() => {
               console.log('✅ Auto-play successful');
+              reconnectAttempts = 0; // Reset on successful play
             }).catch(err => {
-              // Only log if it's not a user interaction error (normal browser behavior)
               if (err.name !== 'NotAllowedError') {
                 console.warn('⚠️ Auto-play prevented:', err.name, err.message);
               } else {
-                console.log('⚠️ Auto-play requires user interaction (normal browser behavior)');
+                console.log('⚠️ Auto-play requires user interaction');
               }
               updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
               playAttempted = false; // Allow retry
@@ -436,13 +560,14 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         };
 
-        // Try multiple times with different delays
+        // Try multiple times with different delays for better reliability
         setTimeout(attemptPlay, 200);
         setTimeout(attemptPlay, 500);
         setTimeout(attemptPlay, 1000);
+        setTimeout(attemptPlay, 2000);
 
         // Also listen to ready events
-        ['canplay', 'loadeddata'].forEach(eventName => {
+        ['canplay', 'loadeddata', 'canplaythrough'].forEach(eventName => {
           audioPlayer.addEventListener(eventName, attemptPlay, { once: true });
         });
       } else {
@@ -450,8 +575,6 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`⏸️ Stream loaded, waiting for user to click play`);
       }
     }, 50);
-
-    // Stream test disabled to prevent 404 errors - streams work without testing
 
     // Track info will be updated via metadata events
     updateTrackInfo(stationName);
@@ -624,25 +747,11 @@ document.addEventListener('DOMContentLoaded', () => {
           console.warn('⚠️ Media error: Aborted');
           break;
         case MediaError.MEDIA_ERR_NETWORK:
-          errorMessage = 'Network error - Check CORS or connection';
+          errorMessage = 'Network error - Reconectando automáticamente...';
           updatePlayerDisplay(stationName, 'Network Error', errorMessage);
           console.warn('⚠️ Media error: Network');
-          console.warn('💡 Tip: Check if server allows CORS or if stream is accessible');
-          if (currentUrl) {
-            reconnectAttempts++;
-            if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
-              console.log(`🔄 Retry attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
-              reconnectTimeout = setTimeout(() => {
-                if (audioPlayer.paused) return; // Don't reconnect if user paused
-                audioPlayer.load();
-                audioPlayer.play().catch(() => {
-                  updatePlayerDisplay(stationName, 'Ready', 'Click play to retry');
-                });
-              }, 5000); // Increased to 5s to allow server to recover
-            } else {
-              console.error('❌ Max reconnection attempts reached');
-              updatePlayerDisplay(stationName, 'Error', 'Stream unavailable - Check server');
-            }
+          if (currentUrl && !isReconnecting) {
+            attemptReconnection();
           }
           break;
         case MediaError.MEDIA_ERR_DECODE:
@@ -675,35 +784,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Improve reconnection handling for stream interruptions
-  // reconnectTimeout and isReconnecting used from top-level scope
-
+  // Improved error handling - use the new attemptReconnection function
   audioPlayer.addEventListener('error', (e) => {
     const error = audioPlayer.error;
     if (error && error.code === MediaError.MEDIA_ERR_NETWORK && !isReconnecting) {
-      console.warn('⚠️ Network error detected, attempting reconnection...');
-      isReconnecting = true;
-
-      // Clear any existing timeout
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-
-      // Try to reload after a delay - but DON'T clear src
-      reconnectTimeout = setTimeout(() => {
-        if (audioPlayer.paused) return; // Don't reconnect if user paused
-
-        if (currentStation && audioPlayer.src) {
-          console.log('🔄 Attempting to reload stream...');
-          audioPlayer.load();
-          audioPlayer.play().catch(() => {
-            console.log('⏳ Waiting for stream to be ready...');
-            isReconnecting = false;
-          });
-        } else {
-          isReconnecting = false;
-        }
-      }, 3000); // Increased from 2000 to reduce aggressiveness
+      console.warn('⚠️ Network error detected');
+      attemptReconnection();
     }
   });
 
@@ -712,10 +798,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isReconnecting) {
       console.log('✅ Stream reconnected successfully');
       isReconnecting = false;
+      reconnectAttempts = 0; // Reset attempts on successful play
+      networkQuality = 'good';
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
         reconnectTimeout = null;
       }
+    }
+    
+    // Clear stalled timeout when playing
+    if (stalledTimeout) {
+      clearTimeout(stalledTimeout);
+      stalledTimeout = null;
+    }
+    
+    // Ensure buffer monitoring is running
+    if (!bufferCheckInterval) {
+      startBufferMonitoring();
     }
   });
 
@@ -724,21 +823,40 @@ document.addEventListener('DOMContentLoaded', () => {
     if (audioPlayer.paused) return;
 
     const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
-    updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
+    updatePlayerDisplay(stationName, 'Buffering...', 'Cargando stream...');
 
-    // Slight delay then try to resume - but DON'T clear the src
-    setTimeout(() => {
-      if (audioPlayer.paused) return;
-      // Just try to play, don't manipulate the src at all
-      if (audioPlayer.readyState >= 2) {
+    // Clear any stalled timeout
+    if (stalledTimeout) {
+      clearTimeout(stalledTimeout);
+    }
+
+    // If waiting for more than 5 seconds, try to recover
+    stalledTimeout = setTimeout(() => {
+      if (audioPlayer.paused || !audioPlayer.src) return;
+
+      // Check if we're really stalled
+      if (audioPlayer.readyState < 2) {
+        console.warn('⚠️ Stream stalled, attempting recovery...');
+        // Try to reload
+        audioPlayer.load();
+        if (!audioPlayer.paused) {
+          audioPlayer.play().catch(() => {
+            // If play fails, try reconnection
+            if (!isReconnecting) {
+              attemptReconnection();
+            }
+          });
+        }
+      } else {
+        // Stream is ready, just try to play
         audioPlayer.play().catch(() => {
           // Play might be blocked, that's OK
         });
       }
-    }, 1500);
+    }, 5000);
   });
 
-  // Improve buffer handling - monitor buffer health
+  // Optimized buffer handling - monitor buffer health
   audioPlayer.addEventListener('progress', () => {
     // Stream is downloading data - check buffer health
     if (audioPlayer.buffered.length > 0) {
@@ -746,11 +864,26 @@ document.addEventListener('DOMContentLoaded', () => {
       const currentTime = audioPlayer.currentTime;
       const bufferAhead = bufferedEnd - currentTime;
 
+      // Update network quality based on buffer
+      if (bufferAhead > 10) {
+        networkQuality = 'good';
+      } else if (bufferAhead > 3) {
+        networkQuality = 'slow';
+      } else if (bufferAhead < 1) {
+        networkQuality = 'offline';
+      }
+
       // If buffer is healthy (> 5 seconds), ensure playback continues
-      if (bufferAhead > 5 && audioPlayer.paused && !audioPlayer.ended) {
+      if (bufferAhead > 5 && audioPlayer.paused && !audioPlayer.ended && !isReconnecting) {
         audioPlayer.play().catch(() => {
           // Play might be blocked, that's OK
         });
+      }
+
+      // Clear stalled timeout if buffer is good
+      if (bufferAhead > 3 && stalledTimeout) {
+        clearTimeout(stalledTimeout);
+        stalledTimeout = null;
       }
     }
   });

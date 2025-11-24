@@ -74,13 +74,105 @@
 
   <!-- Service Worker Registration -->
   <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/assets/sw.js')
-          .then(reg => console.log('✅ Service Worker registrado'))
-          .catch(err => console.log('⚠️ Service Worker no registrado:', err));
-      });
+    // Detectar iOS/Safari
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    
+    // Función para desactivar Service Worker si está causando problemas
+    function unregisterServiceWorkers() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister().then(() => {
+              console.log('🗑️ Service Worker desregistrado');
+            });
+          }
+        });
+      }
     }
+    
+    // En iOS, el Service Worker puede causar problemas, así que lo registramos de forma más segura
+    if ('serviceWorker' in navigator) {
+      // En iOS, esperar más tiempo antes de registrar el SW y hacerlo opcional
+      const delay = isIOS ? 3000 : 0;
+      
+      setTimeout(() => {
+        // Intentar registrar el SW, pero no bloquear si falla
+        navigator.serviceWorker.register('/assets/sw.js', { scope: '/' })
+          .then(reg => {
+            console.log('✅ Service Worker registrado');
+            
+            // Timeout para detectar si el SW está bloqueando la carga (especialmente en iOS)
+            const swTimeout = setTimeout(() => {
+              // Si después de 10 segundos la página no carga, desactivar SW
+              if (document.readyState !== 'complete') {
+                console.warn('⚠️ Posible bloqueo del Service Worker, desactivando...');
+                if (isIOS) {
+                  unregisterServiceWorkers();
+                }
+              }
+            }, 10000);
+            
+            // Cancelar timeout si la página carga correctamente
+            window.addEventListener('load', () => {
+              clearTimeout(swTimeout);
+            }, { once: true });
+            
+            // Forzar actualización si hay una nueva versión
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                console.log('🔄 Nueva versión del Service Worker encontrada');
+                
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'activated') {
+                    console.log('✅ Nueva versión del Service Worker activada');
+                    // Solo recargar si no es iOS (iOS puede tener problemas con recargas automáticas)
+                    if (!isIOS && navigator.serviceWorker.controller) {
+                      window.location.reload();
+                    }
+                  }
+                });
+              }
+            });
+            
+            // Verificar actualizaciones periódicamente (solo si no es iOS)
+            if (!isIOS) {
+              setInterval(() => {
+                reg.update().catch(() => {
+                  // Silenciar errores de actualización
+                });
+              }, 60000); // Cada minuto
+            }
+          })
+          .catch(err => {
+            console.log('⚠️ Service Worker no registrado:', err);
+            // En iOS, si el SW falla, no es crítico - la página debe funcionar sin él
+            if (isIOS) {
+              console.log('ℹ️ iOS detectado - continuando sin Service Worker');
+              // Asegurarse de que no hay SWs antiguos bloqueando
+              unregisterServiceWorkers();
+            }
+          });
+      }, delay);
+    } else {
+      console.log('ℹ️ Service Worker no soportado en este navegador');
+    }
+    
+    // Fallback: Si la página no carga después de 5 segundos, intentar desactivar SWs
+    setTimeout(() => {
+      if (document.readyState !== 'complete' && isIOS) {
+        console.warn('⚠️ Página tardando en cargar, verificando Service Workers...');
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            if (registrations.length > 0) {
+              console.warn('⚠️ Service Workers activos detectados, desactivando...');
+              unregisterServiceWorkers();
+            }
+          });
+        }
+      }
+    }, 5000);
   </script>
 
   <!-- Analytics (Preparado - descomentar y añadir tu ID cuando esté listo) -->
@@ -260,7 +352,7 @@
           <span class="volume-icon" id="volumeIcon">🔊</span>
           <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="100" aria-label="Volume">
         </div>
-        <audio id="audioPlayer" preload="none" crossorigin="anonymous">
+        <audio id="audioPlayer" preload="auto" crossorigin="anonymous">
           <source src="" type="audio/mpeg">
           Your browser does not support the audio player.
         </audio>
