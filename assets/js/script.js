@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
     });
   })();
+
   // Theme management
   const themeToggle = document.getElementById('themeToggle');
   const themeIcon = themeToggle.querySelector('.theme-icon');
@@ -215,6 +216,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const MAX_RECONNECT_ATTEMPTS = 5;
   let reconnectTimeout = null;
   let trackInfoInterval = null;
+  let stalledTimeout = null;
+  let isReconnecting = false; // <-- AÑADIDO: variable que antes usabas sin declarar
 
   // Update player display
   function updatePlayerDisplay(stationName, status, streamInfo = '') {
@@ -589,6 +592,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     audioPlayer.addEventListener('playing', () => {
+      if (stalledTimeout) {
+        clearTimeout(stalledTimeout);
+        stalledTimeout = null;
+      }
+      reconnectAttempts = 0; // Reset on successful play
+
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
     });
@@ -664,27 +673,6 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('⚠️ Error event fired but no error object');
       updatePlayerDisplay(stationName, 'Error', 'Stream error - Check console');
     }
-  });
-
-  let stalledTimeout = null;
-  // reconnectAttempts and MAX_RECONNECT_ATTEMPTS already declared at top of file
-
-  audioPlayer.addEventListener('stalled', () => {
-    // Don't aggressively try to recover for stalled streams
-    // Modern browsers handle this well on their own
-    if (audioPlayer.paused) return;
-
-    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
-    updatePlayerDisplay(stationName, 'Buffering...', 'Stream loading...');
-  });
-
-  // Reset reconnect attempts on successful playback
-  audioPlayer.addEventListener('playing', () => {
-    if (stalledTimeout) {
-      clearTimeout(stalledTimeout);
-      stalledTimeout = null;
-    }
-    reconnectAttempts = 0; // Reset on successful play
   });
 
   // Improve reconnection handling for stream interruptions
@@ -947,142 +935,141 @@ document.addEventListener('DOMContentLoaded', () => {
   audioPlayer.addEventListener('canplaythrough', () => {
     console.log('✅ Stream fully loaded');
   });
-}
 
-// Custom controls
-const customPlayBtn = document.getElementById('customPlayBtn');
-const volumeSlider = document.getElementById('volumeSlider');
-const volumeIcon = document.getElementById('volumeIcon');
+  // Custom controls
+  const customPlayBtn = document.getElementById('customPlayBtn');
+  const volumeSlider = document.getElementById('volumeSlider');
+  const volumeIcon = document.getElementById('volumeIcon');
 
-// Play/Pause button handler
-if (customPlayBtn && audioPlayer) {
-  customPlayBtn.addEventListener('click', async () => {
-    console.log('🔘 Play/Pause button clicked');
-    console.log(`📊 Audio state - paused: ${audioPlayer.paused}, src: ${audioPlayer.src}`);
+  // Play/Pause button handler
+  if (customPlayBtn && audioPlayer) {
+    customPlayBtn.addEventListener('click', async () => {
+      console.log('🔘 Play/Pause button clicked');
+      console.log(`📊 Audio state - paused: ${audioPlayer.paused}, src: ${audioPlayer.src}`);
 
-    if (audioPlayer.paused) {
-      // Try to play
-      if (!audioPlayer.src || audioPlayer.src === '' || audioPlayer.src === window.location.href) {
-        // No stream selected, load the current station
-        console.log('📻 No stream loaded, loading current station...');
-        if (currentStation) {
-          switchStation(currentStation, true);
-          setTimeout(async () => {
-            try {
-              await audioPlayer.play();
-              console.log('✅ Audio playing after station switch');
-            } catch (err) {
-              console.warn('⚠️ Play prevented:', err);
-              updatePlayerDisplay(
-                currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
-                'Ready',
-                'Click play to start'
-              );
-            }
-          }, 500);
+      if (audioPlayer.paused) {
+        // Try to play
+        if (!audioPlayer.src || audioPlayer.src === '' || audioPlayer.src === window.location.href) {
+          // No stream selected, load the current station
+          console.log('📻 No stream loaded, loading current station...');
+          if (currentStation) {
+            switchStation(currentStation, true);
+            setTimeout(async () => {
+              try {
+                await audioPlayer.play();
+                console.log('✅ Audio playing after station switch');
+              } catch (err) {
+                console.warn('⚠️ Play prevented:', err);
+                updatePlayerDisplay(
+                  currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+                  'Ready',
+                  'Click play to start'
+                );
+              }
+            }, 500);
+          } else {
+            console.warn('❌ No station selected');
+          }
         } else {
-          console.warn('❌ No station selected');
+          // Stream is loaded, try to play
+          console.log('▶️ Attempting to play stream...');
+          try {
+            await audioPlayer.play();
+            console.log('✅ Audio playing successfully');
+          } catch (err) {
+            console.warn('⚠️ Play prevented:', err.name, err.message);
+            updatePlayerDisplay(
+              currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+              'Ready',
+              'Click play to start'
+            );
+          }
         }
       } else {
-        // Stream is loaded, try to play
-        console.log('▶️ Attempting to play stream...');
-        try {
-          await audioPlayer.play();
-          console.log('✅ Audio playing successfully');
-        } catch (err) {
-          console.warn('⚠️ Play prevented:', err.name, err.message);
-          updatePlayerDisplay(
-            currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
-            'Ready',
-            'Click play to start'
-          );
-        }
-      }
-    } else {
-      // Audio is playing, pause it
-      console.log('⏸️ Pausing audio...');
-      audioPlayer.pause();
-      console.log('✅ Audio paused');
-    }
-  });
-
-  // Update button state when audio plays/pauses
-  audioPlayer.addEventListener('play', () => {
-    // console.log('🎵 Play event fired');
-    customPlayBtn.classList.add('playing');
-  });
-
-  audioPlayer.addEventListener('pause', () => {
-    // console.log('⏸️ Pause event fired');
-    customPlayBtn.classList.remove('playing');
-  });
-
-  // Also listen for 'playing' event to ensure state is correct
-  audioPlayer.addEventListener('playing', () => {
-    console.log('🎵 Playing event fired - audio is actually playing');
-    customPlayBtn.classList.add('playing');
-  });
-}
-
-// Volume control handler
-if (volumeSlider && audioPlayer) {
-  // Set initial volume
-  audioPlayer.volume = volumeSlider.value / 100;
-
-  // Load saved volume
-  const savedVolume = localStorage.getItem('audioVolume');
-  if (savedVolume !== null) {
-    const volume = parseInt(savedVolume);
-    audioPlayer.volume = volume / 100;
-    volumeSlider.value = volume;
-    updateVolumeIcon(volume);
-  }
-
-  volumeSlider.addEventListener('input', (e) => {
-    const volume = e.target.value;
-    audioPlayer.volume = volume / 100;
-    localStorage.setItem('audioVolume', volume);
-    updateVolumeIcon(volume);
-  });
-
-  // Volume icon click to mute/unmute
-  if (volumeIcon) {
-    volumeIcon.addEventListener('click', () => {
-      if (audioPlayer.volume > 0) {
-        audioPlayer.dataset.previousVolume = audioPlayer.volume;
-        audioPlayer.volume = 0;
-        volumeSlider.value = 0;
-        updateVolumeIcon(0);
-      } else {
-        const prevVolume = parseFloat(audioPlayer.dataset.previousVolume || 1);
-        audioPlayer.volume = prevVolume;
-        volumeSlider.value = prevVolume * 100;
-        updateVolumeIcon(prevVolume * 100);
+        // Audio is playing, pause it
+        console.log('⏸️ Pausing audio...');
+        audioPlayer.pause();
+        console.log('✅ Audio paused');
       }
     });
-  }
-}
 
-function updateVolumeIcon(volume) {
-  if (!volumeIcon) return;
-  if (volume === 0 || volume === '0') {
-    volumeIcon.textContent = '🔇';
-  } else if (volume < 50) {
-    volumeIcon.textContent = '🔉';
-  } else {
-    volumeIcon.textContent = '🔊';
-  }
-}
+    // Update button state when audio plays/pauses
+    audioPlayer.addEventListener('play', () => {
+      // console.log('🎵 Play event fired');
+      customPlayBtn.classList.add('playing');
+    });
 
-// Smooth animation when bento-style cards appear
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('visible');
-      observer.unobserve(entry.target);
+    audioPlayer.addEventListener('pause', () => {
+      // console.log('⏸️ Pause event fired');
+      customPlayBtn.classList.remove('playing');
+    });
+
+    // Also listen for 'playing' event to ensure state is correct
+    audioPlayer.addEventListener('playing', () => {
+      console.log('🎵 Playing event fired - audio is actually playing');
+      customPlayBtn.classList.add('playing');
+    });
+  }
+
+  // Volume control handler
+  if (volumeSlider && audioPlayer) {
+    // Set initial volume
+    audioPlayer.volume = volumeSlider.value / 100;
+
+    // Load saved volume
+    const savedVolume = localStorage.getItem('audioVolume');
+    if (savedVolume !== null) {
+      const volume = parseInt(savedVolume);
+      audioPlayer.volume = volume / 100;
+      volumeSlider.value = volume;
+      updateVolumeIcon(volume);
     }
-  });
-}, { threshold: 0.2 });
 
-document.querySelectorAll('.bento-card').forEach(card => observer.observe(card));
+    volumeSlider.addEventListener('input', (e) => {
+      const volume = e.target.value;
+      audioPlayer.volume = volume / 100;
+      localStorage.setItem('audioVolume', volume);
+      updateVolumeIcon(volume);
+    });
+
+    // Volume icon click to mute/unmute
+    if (volumeIcon) {
+      volumeIcon.addEventListener('click', () => {
+        if (audioPlayer.volume > 0) {
+          audioPlayer.dataset.previousVolume = audioPlayer.volume;
+          audioPlayer.volume = 0;
+          volumeSlider.value = 0;
+          updateVolumeIcon(0);
+        } else {
+          const prevVolume = parseFloat(audioPlayer.dataset.previousVolume || 1);
+          audioPlayer.volume = prevVolume;
+          volumeSlider.value = prevVolume * 100;
+          updateVolumeIcon(prevVolume * 100);
+        }
+      });
+    }
+  }
+
+  function updateVolumeIcon(volume) {
+    if (!volumeIcon) return;
+    if (volume === 0 || volume === '0') {
+      volumeIcon.textContent = '🔇';
+    } else if (volume < 50) {
+      volumeIcon.textContent = '🔉';
+    } else {
+      volumeIcon.textContent = '🔊';
+    }
+  }
+
+  // Smooth animation when bento-style cards appear
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.2 });
+
+  document.querySelectorAll('.bento-card').forEach(card => observer.observe(card));
 });
