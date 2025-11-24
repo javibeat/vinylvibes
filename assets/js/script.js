@@ -1053,30 +1053,8 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(setupMetadataTracking, 1000);
     });
 
-    // Check stream headers for ICY metadata support when stream loads
-    audioPlayer.addEventListener('loadstart', async () => {
-      if (!audioPlayer.src) return;
-
-      try {
-        // Check if stream supports ICY metadata
-        const response = await fetch(audioPlayer.src, {
-          method: 'HEAD',
-          headers: {
-            'Icy-MetaData': '1'
-          }
-        });
-
-        const icyMetaInt = response.headers.get('icy-metaint');
-        if (icyMetaInt) {
-          console.log('✅ Stream supports ICY metadata (interval:', icyMetaInt, 'bytes)');
-        } else {
-          console.log('⚠️ Stream does not support ICY metadata headers');
-        }
-      } catch (e) {
-        // CORS or other error - this is expected for some streams
-        console.log('📝 Could not check ICY metadata support (CORS may block this)');
-      }
-    });
+    // Metadata will be fetched from /admin/stats.xml endpoint instead
+    // Removed HEAD request check to avoid CORS preflight issues
 
     audioPlayer.addEventListener('canplay', () => {
       console.log('✅ Stream ready to play');
