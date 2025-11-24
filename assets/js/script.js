@@ -377,7 +377,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Stop current playback
     audioPlayer.pause();
-    audioPlayer.src = '';
 
     // Update active state
     stationButtons.forEach(btn => btn.classList.remove('active'));
@@ -394,19 +393,9 @@ document.addEventListener('DOMContentLoaded', () => {
     currentStation = stationId;
     currentBaseUrl = baseUrl;
 
-    // Set the source immediately to prevent errors
+    // Set the source directly - no clearing or validation needed
     console.log(`🔗 Setting audio source to: ${streamUrl}`);
     audioPlayer.src = streamUrl;
-
-    // Verify the source was set correctly
-    if (audioPlayer.src !== streamUrl && audioPlayer.src !== streamUrl + '/') {
-      console.warn(`⚠️ Source mismatch. Expected: ${streamUrl}, Got: ${audioPlayer.src}`);
-      // Force set it again
-      audioPlayer.src = '';
-      setTimeout(() => {
-        audioPlayer.src = streamUrl;
-      }, 10);
-    }
 
     // Load the stream immediately (don't wait for test)
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
@@ -723,26 +712,21 @@ document.addEventListener('DOMContentLoaded', () => {
           clearTimeout(reconnectTimeout);
         }
 
-        // Try to reload and reconnect after a delay
+        // Try to reload after a delay - but DON'T clear src
         reconnectTimeout = setTimeout(() => {
           if (audioPlayer.paused) return; // Don't reconnect if user paused
 
           if (currentStation && audioPlayer.src) {
-            console.log('🔄 Attempting to reconnect to stream...');
-            const currentSrc = audioPlayer.src;
-            audioPlayer.src = '';
-            setTimeout(() => {
-              audioPlayer.src = currentSrc;
-              audioPlayer.load();
-              audioPlayer.play().catch(() => {
-                console.log('⏳ Waiting for stream to be ready...');
-                isReconnecting = false;
-              });
-            }, 500);
+            console.log('🔄 Attempting to reload stream...');
+            audioPlayer.load();
+            audioPlayer.play().catch(() => {
+              console.log('⏳ Waiting for stream to be ready...');
+              isReconnecting = false;
+            });
           } else {
             isReconnecting = false;
           }
-        }, 2000);
+        }, 3000); // Increased from 2000 to reduce aggressiveness
       }
     });
 
