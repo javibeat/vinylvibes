@@ -1,78 +1,65 @@
 // Vinyl Vibes Radio - Interactive features
 // ----------------------------------
 
-// Prevent zoom on mobile devices (especially iOS) - STRICT
-(function() {
-  let lastTouchEnd = 0;
-  let initialDistance = 0;
-  let touchStartTime = 0;
-  
-  // Prevent double-tap zoom on iOS
-  document.addEventListener('touchend', function(event) {
-    const now = Date.now();
-    if (now - lastTouchEnd <= 300) {
-      event.preventDefault();
-      event.stopPropagation();
-      return false;
-    }
-    lastTouchEnd = now;
-  }, { passive: false });
-  
-  // Prevent pinch zoom - STRICT
-  document.addEventListener('touchstart', function(event) {
-    touchStartTime = Date.now();
-    if (event.touches.length === 2) {
-      const touch1 = event.touches[0];
-      const touch2 = event.touches[1];
-      initialDistance = Math.hypot(
-        touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
-      );
-      // Prevent default immediately for two-finger touches
-      event.preventDefault();
-      event.stopPropagation();
-    }
-  }, { passive: false });
-  
-  document.addEventListener('touchmove', function(event) {
-    if (event.touches.length === 2) {
-      const touch1 = event.touches[0];
-      const touch2 = event.touches[1];
-      const currentDistance = Math.hypot(
-        touch2.clientX - touch1.clientX,
-        touch2.clientY - touch1.clientY
-      );
-      
-      // If pinch gesture detected, prevent default
-      if (Math.abs(currentDistance - initialDistance) > 5) {
-        event.preventDefault();
-        event.stopPropagation();
-        return false;
-      }
-    }
-  }, { passive: false });
-  
-  // Prevent gesturestart (iOS Safari)
-  document.addEventListener('gesturestart', function(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    return false;
-  }, { passive: false });
-  
-  document.addEventListener('gesturechange', function(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    return false;
-  }, { passive: false });
-  
-  document.addEventListener('gestureend', function(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    return false;
-  }, { passive: false });
-})();
-
 document.addEventListener('DOMContentLoaded', () => {
+  // Prevent zoom on mobile devices (especially iOS) - Only after page loads
+  (function() {
+    // Only run on mobile devices to avoid blocking desktop
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (!isMobile) return;
+    
+    let lastTouchEnd = 0;
+    let initialDistance = 0;
+    let isPinching = false;
+    
+    // Prevent double-tap zoom on iOS - only on body, not on interactive elements
+    document.addEventListener('touchend', function(event) {
+      // Allow default behavior on inputs, buttons, links, etc.
+      const target = event.target;
+      if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.tagName === 'A' || 
+          target.closest('button') || target.closest('a') || target.closest('input')) {
+        return;
+      }
+      
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+      isPinching = false;
+    }, { passive: false });
+    
+    // Prevent pinch zoom - only prevent when actually pinching
+    document.addEventListener('touchstart', function(event) {
+      if (event.touches.length === 2) {
+        isPinching = true;
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
+        initialDistance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+      } else {
+        isPinching = false;
+      }
+    }, { passive: true }); // Use passive for better performance
+    
+    document.addEventListener('touchmove', function(event) {
+      if (isPinching && event.touches.length === 2) {
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
+        const currentDistance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+        
+        // If pinch gesture detected, prevent default
+        if (Math.abs(currentDistance - initialDistance) > 5) {
+          event.preventDefault();
+        }
+      }
+    }, { passive: false });
+  })();
   // Theme management
   const themeToggle = document.getElementById('themeToggle');
   const themeIcon = themeToggle.querySelector('.theme-icon');
@@ -940,13 +927,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Setup metadata tracking when stream loads - try multiple times
+    // Setup metadata tracking when stream loads - optimized to avoid too many calls
     audioPlayer.addEventListener('loadstart', () => {
       console.log('📡 Stream loadstart - setting up metadata tracking');
       metadataTrackingSetup = false; // Reset on new stream
-      setTimeout(setupMetadataTracking, 100);
+      // Only try a few times with reasonable delays
       setTimeout(setupMetadataTracking, 500);
-      setTimeout(setupMetadataTracking, 1000);
       setTimeout(setupMetadataTracking, 2000);
     });
 
