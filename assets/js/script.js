@@ -3,24 +3,24 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   // Prevent zoom on mobile devices (especially iOS) - Only after page loads
-  (function() {
+  (function () {
     // Only run on mobile devices to avoid blocking desktop
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     if (!isMobile) return;
-    
+
     let lastTouchEnd = 0;
     let initialDistance = 0;
     let isPinching = false;
-    
+
     // Prevent double-tap zoom on iOS - only on body, not on interactive elements
-    document.addEventListener('touchend', function(event) {
+    document.addEventListener('touchend', function (event) {
       // Allow default behavior on inputs, buttons, links, etc.
       const target = event.target;
-      if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.tagName === 'A' || 
-          target.closest('button') || target.closest('a') || target.closest('input')) {
+      if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.tagName === 'A' ||
+        target.closest('button') || target.closest('a') || target.closest('input')) {
         return;
       }
-      
+
       const now = Date.now();
       if (now - lastTouchEnd <= 300) {
         event.preventDefault();
@@ -28,9 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
       lastTouchEnd = now;
       isPinching = false;
     }, { passive: false });
-    
+
     // Prevent pinch zoom - only prevent when actually pinching
-    document.addEventListener('touchstart', function(event) {
+    document.addEventListener('touchstart', function (event) {
       if (event.touches.length === 2) {
         isPinching = true;
         const touch1 = event.touches[0];
@@ -43,8 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
         isPinching = false;
       }
     }, { passive: true }); // Use passive for better performance
-    
-    document.addEventListener('touchmove', function(event) {
+
+    document.addEventListener('touchmove', function (event) {
       if (isPinching && event.touches.length === 2) {
         const touch1 = event.touches[0];
         const touch2 = event.touches[1];
@@ -52,13 +52,24 @@ document.addEventListener('DOMContentLoaded', () => {
           touch2.clientX - touch1.clientX,
           touch2.clientY - touch1.clientY
         );
-        
+
         // If pinch gesture detected, prevent default
         if (Math.abs(currentDistance - initialDistance) > 5) {
           event.preventDefault();
         }
       }
     }, { passive: false });
+
+    // Prevent pinch zoom on iOS (Gesture Events)
+    document.addEventListener('gesturestart', function (e) {
+      e.preventDefault();
+    });
+    document.addEventListener('gesturechange', function (e) {
+      e.preventDefault();
+    });
+    document.addEventListener('gestureend', function (e) {
+      e.preventDefault();
+    });
   })();
   // Theme management
   const themeToggle = document.getElementById('themeToggle');
@@ -260,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Extract metadata from audio element (if available)
   function extractMetadataFromAudio() {
     if (!audioPlayer || !audioPlayer.src) return null;
-    
+
     try {
       // Try to get metadata from the audio element
       // Note: Browsers have limited support for reading ID3 tags from streams
@@ -275,14 +286,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Fetch artwork from external API based on track title
   async function fetchArtworkFromAPI(trackTitle, artist = null) {
     if (!trackTitle || trackTitle.trim() === '') return null;
-    
+
     try {
       // Try Last.fm API (free, no key required for basic usage)
       const searchQuery = artist ? `${artist} ${trackTitle}` : trackTitle;
       const response = await fetch(`https://ws.audioscrobbler.com/2.0/?method=track.search&track=${encodeURIComponent(searchQuery)}&api_key=YOUR_API_KEY&format=json`, {
         mode: 'cors'
       });
-      
+
       // For now, return null - we'll use a simpler approach
       return null;
     } catch (e) {
@@ -349,7 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set the source immediately to prevent errors
     console.log(`🔗 Setting audio source to: ${streamUrl}`);
     audioPlayer.src = streamUrl;
-    
+
     // Verify the source was set correctly
     if (audioPlayer.src !== streamUrl && audioPlayer.src !== streamUrl + '/') {
       console.warn(`⚠️ Source mismatch. Expected: ${streamUrl}, Got: ${audioPlayer.src}`);
@@ -362,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load the stream immediately (don't wait for test)
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
-    
+
     setTimeout(() => {
       console.log(`📥 Loading audio element...`);
       console.log(`✅ Verified audio source: ${audioPlayer.src}`);
@@ -374,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let playAttempted = false;
         const attemptPlay = () => {
           if (playAttempted) return;
-          
+
           if (audioPlayer.readyState >= 1 || audioPlayer.readyState === 0) {
             playAttempted = true;
             console.log(`▶️ Attempting to auto-play...`);
@@ -395,12 +406,12 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(attemptPlay, 100);
           }
         };
-        
+
         // Try multiple times with different delays
         setTimeout(attemptPlay, 200);
         setTimeout(attemptPlay, 500);
         setTimeout(attemptPlay, 1000);
-        
+
         // Also listen to ready events
         ['canplay', 'loadeddata'].forEach(eventName => {
           audioPlayer.addEventListener(eventName, attemptPlay, { once: true });
@@ -606,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   audioPlayer.play().catch(() => {
                     updatePlayerDisplay(stationName, 'Ready', 'Click play to retry');
                   });
-                }, 3000);
+                }, 5000); // Increased to 5s to allow server to recover
               } else {
                 console.error('❌ Max reconnection attempts reached');
                 updatePlayerDisplay(stationName, 'Error', 'Stream unavailable - Check server');
@@ -646,32 +657,34 @@ document.addEventListener('DOMContentLoaded', () => {
     let stalledTimeout = null;
     let reconnectAttempts = 0;
     const MAX_RECONNECT_ATTEMPTS = 3;
-    
+
     audioPlayer.addEventListener('stalled', () => {
       console.warn('⚠️ Stream stalled - buffering');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Reconnecting...');
-      
+
       // Clear any existing timeout
       if (stalledTimeout) {
         clearTimeout(stalledTimeout);
       }
-      
+
       // More aggressive recovery: reload the stream if stalled
       stalledTimeout = setTimeout(() => {
+        if (audioPlayer.paused) return; // Don't recover if user paused
+
         if (audioPlayer.readyState < 3 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttempts++;
           console.log(`🔄 Stream stalled, attempting reconnect ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
           const currentSrc = audioPlayer.src;
           const wasPlaying = !audioPlayer.paused;
-          
+
           audioPlayer.pause();
           audioPlayer.src = '';
-          
+
           setTimeout(() => {
             audioPlayer.src = currentSrc;
             audioPlayer.load();
-            
+
             if (wasPlaying) {
               setTimeout(() => {
                 audioPlayer.play().catch(() => {
@@ -681,11 +694,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           }, 500);
         } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-          console.error('❌ Max reconnection attempts reached');
           updatePlayerDisplay(stationName, 'Connection Lost', 'Please refresh the page');
         }
-      }, 2000); // Reduced from 3000 to 2000 for faster recovery
-      
+      }, 5000); // Increased from 2000 to 5000 to reduce aggressive reloading
+
       // Try to resume playback after a short delay
       setTimeout(() => {
         if (audioPlayer.paused && audioPlayer.readyState >= 2) {
@@ -695,7 +707,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }, 1000);
     });
-    
+
     // Reset reconnect attempts on successful playback
     audioPlayer.addEventListener('playing', () => {
       if (stalledTimeout) {
@@ -708,20 +720,22 @@ document.addEventListener('DOMContentLoaded', () => {
     // Improve reconnection handling for stream interruptions
     let reconnectTimeout = null;
     let isReconnecting = false;
-    
+
     audioPlayer.addEventListener('error', (e) => {
       const error = audioPlayer.error;
       if (error && error.code === MediaError.MEDIA_ERR_NETWORK && !isReconnecting) {
         console.warn('⚠️ Network error detected, attempting reconnection...');
         isReconnecting = true;
-        
+
         // Clear any existing timeout
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout);
         }
-        
+
         // Try to reload and reconnect after a delay
         reconnectTimeout = setTimeout(() => {
+          if (audioPlayer.paused) return; // Don't reconnect if user paused
+
           if (currentStation && audioPlayer.src) {
             console.log('🔄 Attempting to reconnect to stream...');
             const currentSrc = audioPlayer.src;
@@ -757,15 +771,17 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('⚠️ Stream waiting for data');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Buffering...', 'Loading stream...');
-      
+
       // Try to help the stream recover by checking buffer health
       const checkBuffer = () => {
         if (audioPlayer.buffered.length > 0) {
           const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
           const currentTime = audioPlayer.currentTime;
           const bufferAhead = bufferedEnd - currentTime;
-          
+
           if (bufferAhead < 1 && audioPlayer.readyState < 3) {
+            if (audioPlayer.paused) return; // Don't recover if user paused
+
             // Very low buffer, try to reload
             console.log('🔄 Buffer very low, attempting recovery...');
             const currentSrc = audioPlayer.src;
@@ -774,16 +790,16 @@ document.addEventListener('DOMContentLoaded', () => {
               audioPlayer.src = currentSrc;
               audioPlayer.load();
               if (!audioPlayer.paused) {
-                audioPlayer.play().catch(() => {});
+                audioPlayer.play().catch(() => { });
               }
             }, 500);
           }
         }
       };
-      
+
       setTimeout(checkBuffer, 2000);
     });
-    
+
     // Improve buffer handling - monitor buffer health
     audioPlayer.addEventListener('progress', () => {
       // Stream is downloading data - check buffer health
@@ -791,7 +807,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
         const currentTime = audioPlayer.currentTime;
         const bufferAhead = bufferedEnd - currentTime;
-        
+
         // If buffer is healthy (> 5 seconds), ensure playback continues
         if (bufferAhead > 5 && audioPlayer.paused && !audioPlayer.ended) {
           audioPlayer.play().catch(() => {
@@ -811,7 +827,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('✅ Stream metadata loaded');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
       updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps`);
-      
+
       // Try to extract metadata if available
       extractMetadataFromAudio();
     });
@@ -829,51 +845,51 @@ document.addEventListener('DOMContentLoaded', () => {
     // Listen for ICY metadata updates from Icecast stream
     // Icecast sends metadata via ICY protocol, which browsers expose through textTracks
     let metadataTrackingSetup = false;
-    
+
     function setupMetadataTracking() {
       if (metadataTrackingSetup) {
         console.log('📝 Metadata tracking already setup, skipping...');
         return;
       }
-      
-      console.log('🔍 Setting up metadata tracking...');
-      
+
+      // console.log('🔍 Setting up metadata tracking...');
+
       // Method 1: Listen for textTracks when they become available
       if (audioPlayer.textTracks && audioPlayer.textTracks.length > 0) {
-        console.log(`📝 Found ${audioPlayer.textTracks.length} text tracks`);
-        
+        // console.log(`📝 Found ${audioPlayer.textTracks.length} text tracks`);
+
         for (let i = 0; i < audioPlayer.textTracks.length; i++) {
           const track = audioPlayer.textTracks[i];
-          console.log(`📝 Track ${i}: kind=${track.kind}, label=${track.label}, mode=${track.mode}`);
-          
+          // console.log(`📝 Track ${i}: kind=${track.kind}, label=${track.label}, mode=${track.mode}`);
+
           // Try ALL tracks, not just metadata (some browsers use different kinds)
           if (track.kind === 'metadata' || track.kind === 'subtitles' || track.kind === 'chapters' || track.label === '') {
             // Enable the track
             if (track.mode === 'disabled') {
               track.mode = 'hidden';
             }
-            
+
             // Function to process cues
             const processCues = () => {
               if (track.activeCues && track.activeCues.length > 0) {
                 for (let j = 0; j < track.activeCues.length; j++) {
                   const cue = track.activeCues[j];
                   const metadataText = cue.text || '';
-                  
+
                   if (metadataText.trim() === '') continue;
-                  
+
                   console.log(`📝 Cue ${j} from track ${i}:`, metadataText.substring(0, 100));
-                  
+
                   try {
                     // Try different parsing methods
                     let trackTitle = null;
-                    
+
                     // Method 1: Standard ICY format
                     const titleMatch = metadataText.match(/StreamTitle=['"]([^'"]+)['"]/);
                     if (titleMatch && titleMatch[1]) {
                       trackTitle = titleMatch[1].trim();
                     }
-                    
+
                     // Method 2: Try without quotes
                     if (!trackTitle) {
                       const titleMatch2 = metadataText.match(/StreamTitle=([^;]+)/);
@@ -881,7 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         trackTitle = titleMatch2[1].trim().replace(/^['"]|['"]$/g, '');
                       }
                     }
-                    
+
                     // Method 3: Try JSON format
                     if (!trackTitle) {
                       try {
@@ -891,12 +907,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Not JSON, continue
                       }
                     }
-                    
+
                     // Method 4: Try plain text (if it looks like a title)
                     if (!trackTitle && metadataText.trim() !== '' && metadataText.length < 200) {
                       trackTitle = metadataText.trim();
                     }
-                    
+
                     if (trackTitle && trackTitle !== 'Unknown Track' && trackTitle.length > 0 && trackTitle !== stationName) {
                       console.log('🎵 Track metadata received:', trackTitle);
                       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
@@ -910,10 +926,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
               }
             };
-            
+
             // Listen for cue changes
             track.addEventListener('cuechange', processCues);
-            
+
             // Force check cues periodically since cuechange may not fire reliably
             const cueCheckInterval = setInterval(() => {
               if (track.activeCues && track.activeCues.length > 0) {
@@ -921,10 +937,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(cueCheckInterval); // Stop checking once we get metadata
               }
             }, 1000);
-            
+
             // Stop checking after 30 seconds
             setTimeout(() => clearInterval(cueCheckInterval), 30000);
-            
+
             // Also check immediately if cues are already available
             setTimeout(processCues, 500);
             setTimeout(processCues, 2000);
@@ -934,12 +950,12 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         console.log('📝 No text tracks found yet, will retry...');
       }
-      
+
       // Method 2: Listen for new tracks being added
       if (audioPlayer.textTracks) {
         audioPlayer.textTracks.addEventListener('addtrack', (event) => {
           const track = event.track;
-          console.log('📝 New track added:', track.kind, track.label);
+          // console.log(`📝 New track added: ${track.kind} – "${track.label}" – "${track.language}"`);
           if (track.mode === 'disabled') {
             track.mode = 'hidden';
           }
@@ -980,7 +996,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('📡 Data loaded - checking for text tracks');
       setupMetadataTracking();
     });
-    
+
     // Try when stream starts playing
     audioPlayer.addEventListener('playing', () => {
       setTimeout(setupMetadataTracking, 1000);
@@ -989,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check stream headers for ICY metadata support when stream loads
     audioPlayer.addEventListener('loadstart', async () => {
       if (!audioPlayer.src) return;
-      
+
       try {
         // Check if stream supports ICY metadata
         const response = await fetch(audioPlayer.src, {
@@ -998,7 +1014,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'Icy-MetaData': '1'
           }
         });
-        
+
         const icyMetaInt = response.headers.get('icy-metaint');
         if (icyMetaInt) {
           console.log('✅ Stream supports ICY metadata (interval:', icyMetaInt, 'bytes)');
@@ -1034,7 +1050,7 @@ document.addEventListener('DOMContentLoaded', () => {
     customPlayBtn.addEventListener('click', async () => {
       console.log('🔘 Play/Pause button clicked');
       console.log(`📊 Audio state - paused: ${audioPlayer.paused}, src: ${audioPlayer.src}`);
-      
+
       if (audioPlayer.paused) {
         // Try to play
         if (!audioPlayer.src || audioPlayer.src === '' || audioPlayer.src === window.location.href) {
