@@ -368,27 +368,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const bufferAhead = bufferedEnd - currentTime;
 
         // Buffer mínimo aumentado a 10 segundos para evitar cortes
-        // Si el buffer es menor a 10 segundos, activar pre-buffering agresivo
+        // Si el buffer es menor a 10 segundos, activar pre-buffering suave
         if (bufferAhead < 10 && bufferAhead > 0) {
-          console.log(`⚠️ Buffer bajo: ${bufferAhead.toFixed(1)}s - Pre-buffering agresivo...`);
-          
-          // Estrategia mejorada: no recargar, sino pausar brevemente para acumular buffer
-          if (audioPlayer.readyState >= 2 && bufferAhead < 5) {
-            // Si el buffer es crítico (< 5s), pausar 2 segundos para acumular
-            const wasPlaying = !audioPlayer.paused;
-            if (wasPlaying) {
-              audioPlayer.pause();
-              setTimeout(() => {
-                if (wasPlaying && audioPlayer.buffered.length > 0) {
-                  const newBuffer = audioPlayer.buffered.end(audioPlayer.buffered.length - 1) - audioPlayer.currentTime;
-                  if (newBuffer > 5) {
-                    audioPlayer.play().catch(() => {});
-                  } else {
-                    // Buffer aún bajo, intentar reconexión
-                    attemptReconnection();
-                  }
-                }
-              }, 2000);
+          // Solo loggear si es realmente crítico (< 3s)
+          if (bufferAhead < 3) {
+            console.log(`⚠️ Buffer crítico: ${bufferAhead.toFixed(1)}s - Intentando recuperar...`);
+            
+            // NO pausar el audio - solo intentar forzar más buffer
+            // Si el buffer es muy bajo (< 2s), intentar reconexión
+            if (bufferAhead < 2 && !isReconnecting) {
+              console.log('🔄 Buffer muy bajo, intentando reconexión...');
+              attemptReconnection();
             }
           }
         }
@@ -403,6 +393,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isReconnecting && !audioPlayer.paused && audioPlayer.readyState < 2) {
           console.warn('⚠️ Network issue detected, attempting recovery...');
           attemptReconnection();
+        }
+      }
+      
+      // Verificar si el audio se detuvo inesperadamente
+      if (!audioPlayer.paused && audioPlayer.ended) {
+        console.log('🔄 Stream ended, reloading...');
+        audioPlayer.load();
+        setTimeout(() => {
+          if (!audioPlayer.paused) {
+            audioPlayer.play().catch(() => {});
+          }
+        }, 500);
+      }
+      
+      // Verificar si el audio está pausado pero debería estar reproduciéndose
+      if (audioPlayer.paused && audioPlayer.readyState >= 2 && bufferAhead > 3) {
+        // El buffer es bueno pero está pausado - puede ser un problema
+        // Solo intentar play si no hay interacción del usuario reciente
+        const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
+        if (timeSinceLastInteraction > 5000) {
+          // No ha habido interacción del usuario en 5 segundos, intentar reanudar
+          audioPlayer.play().catch(() => {
+            // Silenciar error - puede ser política del navegador
+          });
         }
       }
     }, 1000); // Check every 1 second for faster response
@@ -535,14 +549,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Configure audio player for optimal streaming - ULTRA OPTIMIZADO
     audioPlayer.preload = 'auto';
-    
-    // Ensure volume is set before loading
-    if (volumeSlider) {
-      audioPlayer.volume = volumeSlider.value / 100;
+    // Aumentar buffer del navegador (si está disponible)
+    if (audioPlayer.buffered && audioPlayer.buffered.length > 0) {
+      // Forzar pre-buffering antes de cambiar de fuente
+      audioPlayer.load();
     }
-    audioPlayer.muted = false;
     
-    // Set source and load
     audioPlayer.src = streamUrl;
     
     // Load the stream immediately
@@ -1084,14 +1096,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   audioPlayer.addEventListener('canplay', () => {
     console.log('✅ Stream ready to play');
-    console.log(`📊 ReadyState: ${audioPlayer.readyState}, Volume: ${audioPlayer.volume}`);
     const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
     if (audioPlayer.paused) {
       updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
-    }
-    // Ensure volume is set
-    if (audioPlayer.volume === 0 && volumeSlider) {
-      audioPlayer.volume = volumeSlider.value / 100;
     }
   });
 
@@ -1107,6 +1114,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Play/Pause button handler
   if (customPlayBtn && audioPlayer) {
     customPlayBtn.addEventListener('click', async () => {
+      // Registrar interacción del usuario
+      window.lastUserInteraction = Date.now();
+      
       console.log('🔘 Play/Pause button clicked');
       console.log(`📊 Audio state - paused: ${audioPlayer.paused}, src: ${audioPlayer.src}`);
 
@@ -1136,59 +1146,16 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           // Stream is loaded, try to play
           console.log('▶️ Attempting to play stream...');
-          console.log(`📊 ReadyState: ${audioPlayer.readyState}, Volume: ${audioPlayer.volume}, Muted: ${audioPlayer.muted}`);
-          
-          // Ensure volume is not 0
-          if (audioPlayer.volume === 0) {
-            audioPlayer.volume = volumeSlider ? volumeSlider.value / 100 : 0.8;
-            console.log(`🔊 Volume was 0, set to ${audioPlayer.volume}`);
-          }
-          
-          // Ensure not muted
-          if (audioPlayer.muted) {
-            audioPlayer.muted = false;
-            console.log('🔊 Unmuted audio');
-          }
-          
-          // Wait for readyState if needed
-          if (audioPlayer.readyState < 2) {
-            console.log('⏳ Waiting for stream to be ready...');
-            await new Promise((resolve) => {
-              const checkReady = () => {
-                if (audioPlayer.readyState >= 2) {
-                  resolve();
-                } else {
-                  setTimeout(checkReady, 100);
-                }
-              };
-              checkReady();
-            });
-          }
-          
           try {
             await audioPlayer.play();
             console.log('✅ Audio playing successfully');
-            updatePlayerDisplay(
-              currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
-              'Playing',
-              `Quality: ${currentQuality} kbps`
-            );
           } catch (err) {
             console.warn('⚠️ Play prevented:', err.name, err.message);
-            // Try one more time after a short delay
-            setTimeout(async () => {
-              try {
-                await audioPlayer.play();
-                console.log('✅ Audio playing on retry');
-              } catch (retryErr) {
-                console.error('❌ Play failed on retry:', retryErr);
-                updatePlayerDisplay(
-                  currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
-                  'Error',
-                  'Click play again'
-                );
-              }
-            }, 500);
+            updatePlayerDisplay(
+              currentStationDisplay ? currentStationDisplay.textContent : 'Unknown',
+              'Ready',
+              'Click play to start'
+            );
           }
         }
       } else {
