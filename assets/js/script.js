@@ -455,48 +455,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     console.log(`🎯 Initial station: ${stationName} (ID: ${stationId})`);
 
-    // Auto-play favorite station on page load
-    // Use multiple events and retries for better success rate
+    // Load initial station WITHOUT auto-play (user must click play or select a station)
     setTimeout(() => {
-      switchStation(stationId, true);
-      
-      // Aggressive auto-play with multiple event listeners
-      let playAttempted = false;
-      const attemptAutoPlay = () => {
-        if (playAttempted) return;
-        
-        // Check if stream is ready
-        if (audioPlayer.readyState >= 1 || audioPlayer.readyState === 0) {
-          playAttempted = true;
-          console.log('🎵 Stream ready, attempting auto-play...');
-          
-          audioPlayer.play().then(() => {
-            console.log('✅ Auto-play successful on page load');
-          }).catch(err => {
-            // Browser blocked auto-play (normal behavior)
-            console.log('⚠️ Auto-play requires user interaction (normal browser behavior)');
-            updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-            playAttempted = false; // Allow retry on user interaction
-          });
-        }
-      };
-      
-      // Try multiple events for better compatibility
-      const events = ['canplay', 'loadeddata', 'loadedmetadata', 'playing'];
-      events.forEach(eventName => {
-        audioPlayer.addEventListener(eventName, attemptAutoPlay, { once: true });
-      });
-      
-      // Immediate attempt if already ready
-      if (audioPlayer.readyState >= 1) {
-        setTimeout(attemptAutoPlay, 300);
-      }
-      
-      // Fallback attempts with increasing delays
-      [500, 1000, 2000, 3000].forEach(delay => {
-        setTimeout(attemptAutoPlay, delay);
-      });
-    }, 1000);
+      switchStation(stationId, false); // false = no auto-play on page load
+    }, 100);
   }
 
   // Network status monitoring
@@ -639,6 +601,54 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 1000);
     });
 
+    // Improve reconnection handling for stream interruptions
+    let reconnectTimeout = null;
+    let isReconnecting = false;
+    
+    audioPlayer.addEventListener('error', (e) => {
+      const error = audioPlayer.error;
+      if (error && error.code === MediaError.MEDIA_ERR_NETWORK && !isReconnecting) {
+        console.warn('⚠️ Network error detected, attempting reconnection...');
+        isReconnecting = true;
+        
+        // Clear any existing timeout
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+        }
+        
+        // Try to reload and reconnect after a delay
+        reconnectTimeout = setTimeout(() => {
+          if (currentStation && audioPlayer.src) {
+            console.log('🔄 Attempting to reconnect to stream...');
+            const currentSrc = audioPlayer.src;
+            audioPlayer.src = '';
+            setTimeout(() => {
+              audioPlayer.src = currentSrc;
+              audioPlayer.load();
+              audioPlayer.play().catch(() => {
+                console.log('⏳ Waiting for stream to be ready...');
+                isReconnecting = false;
+              });
+            }, 500);
+          } else {
+            isReconnecting = false;
+          }
+        }, 2000);
+      }
+    });
+
+    // Reset reconnection flag when stream starts playing successfully
+    audioPlayer.addEventListener('playing', () => {
+      if (isReconnecting) {
+        console.log('✅ Stream reconnected successfully');
+        isReconnecting = false;
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = null;
+        }
+      }
+    });
+
     audioPlayer.addEventListener('waiting', () => {
       console.warn('⚠️ Stream waiting for data');
       const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
@@ -683,6 +693,93 @@ document.addEventListener('DOMContentLoaded', () => {
       // Metadata might be available now
       if (audioPlayer.textTracks && audioPlayer.textTracks.length > 0) {
         console.log('📝 Text tracks available:', audioPlayer.textTracks.length);
+      }
+    });
+
+    // Listen for ICY metadata updates from Icecast stream
+    // Icecast sends metadata via ICY protocol, which browsers expose through textTracks
+    audioPlayer.addEventListener('loadstart', () => {
+      // Enable metadata tracks when stream starts loading
+      if (audioPlayer.textTracks) {
+        for (let i = 0; i < audioPlayer.textTracks.length; i++) {
+          const track = audioPlayer.textTracks[i];
+          if (track.kind === 'metadata') {
+            track.mode = 'hidden'; // Enable metadata track
+            track.addEventListener('cuechange', () => {
+              if (track.activeCues && track.activeCues.length > 0) {
+                const cue = track.activeCues[0];
+                try {
+                  // Parse ICY metadata (format: StreamTitle='Artist - Title';StreamUrl='...')
+                  const metadataText = cue.text || '';
+                  const titleMatch = metadataText.match(/StreamTitle='([^']+)'/);
+                  if (titleMatch && titleMatch[1]) {
+                    const trackTitle = titleMatch[1].trim();
+                    console.log('🎵 Track metadata received:', trackTitle);
+                    const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
+                    updateTrackInfo(stationName, trackTitle);
+                  }
+                } catch (e) {
+                  console.warn('⚠️ Error parsing metadata:', e);
+                }
+              }
+            });
+          }
+        }
+      }
+    });
+
+    // Also try to get metadata from the stream URL directly (Icecast status)
+    // This is a fallback method
+    async function fetchStreamMetadata() {
+      if (!currentBaseUrl || !currentStation) return;
+      
+      try {
+        // Try to get metadata from Icecast status endpoint
+        const statusUrl = `${currentBaseUrl}/status-json.xsl`;
+        const response = await fetch(statusUrl, { 
+          mode: 'cors',
+          cache: 'no-cache'
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          // Parse Icecast status JSON to find current track
+          if (data.icestats && data.icestats.source) {
+            const sources = Array.isArray(data.icestats.source) 
+              ? data.icestats.source 
+              : [data.icestats.source];
+            
+            const mountName = `${currentStation}${currentQuality}`;
+            const source = sources.find(s => s.server_name && s.listenurl && s.listenurl.includes(mountName));
+            
+            if (source && source.server_name) {
+              const trackTitle = source.server_name;
+              const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Unknown';
+              updateTrackInfo(stationName, trackTitle);
+            }
+          }
+        }
+      } catch (e) {
+        // Silently fail - metadata endpoint might not be available
+        // This is expected and not an error
+      }
+    }
+
+    // Periodically try to fetch metadata (every 10 seconds)
+    let metadataInterval = null;
+    audioPlayer.addEventListener('play', () => {
+      // Start fetching metadata when playback starts
+      if (!metadataInterval) {
+        metadataInterval = setInterval(fetchStreamMetadata, 10000);
+        fetchStreamMetadata(); // Initial fetch
+      }
+    });
+
+    audioPlayer.addEventListener('pause', () => {
+      // Stop fetching metadata when paused
+      if (metadataInterval) {
+        clearInterval(metadataInterval);
+        metadataInterval = null;
       }
     });
 
