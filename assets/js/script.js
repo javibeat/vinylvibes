@@ -688,8 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Improve reconnection handling for stream interruptions
-  let reconnectTimeout = null;
-  let isReconnecting = false;
+  // reconnectTimeout and isReconnecting used from top-level scope
 
   audioPlayer.addEventListener('error', (e) => {
     const error = audioPlayer.error;
