@@ -366,6 +366,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
         const currentTime = audioPlayer.currentTime;
         const bufferAhead = bufferedEnd - currentTime;
+        
+        // Log detallado si el buffer es muy bajo mientras está reproduciéndose
+        if (bufferAhead < 1 && !audioPlayer.paused) {
+          console.log(`⚠️ Buffer crítico durante reproducción: ${bufferAhead.toFixed(2)}s - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}`);
+        }
 
         // Buffer monitoring - solo monitorear, NUNCA reconectar por buffer bajo
         // El buffer bajo es normal en streams y se recupera automáticamente
@@ -895,6 +900,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   audioPlayer.addEventListener('waiting', () => {
+    console.log('⏳ Waiting event fired - buffer agotado');
+    console.log(`📊 Waiting - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}`);
+    
     // Only show buffering message if not paused by user
     if (audioPlayer.paused) return;
 
@@ -1283,10 +1291,25 @@ document.addEventListener('DOMContentLoaded', () => {
       customPlayBtn.classList.add('playing');
     });
 
-    audioPlayer.addEventListener('pause', () => {
-      // console.log('⏸️ Pause event fired');
-      customPlayBtn.classList.remove('playing');
-    });
+  audioPlayer.addEventListener('pause', () => {
+    console.log('⏸️ Pause event fired');
+    console.log(`📊 Pause - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Ended: ${audioPlayer.ended}`);
+    customPlayBtn.classList.remove('playing');
+    
+    // Si se pausó inesperadamente (no por el usuario), intentar reanudar
+    const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
+    if (timeSinceLastInteraction > 2000 && !audioPlayer.ended && audioPlayer.readyState >= 2) {
+      // No ha habido interacción del usuario en 2 segundos y el stream está listo
+      console.log('🔄 Audio pausado inesperadamente, intentando reanudar...');
+      setTimeout(() => {
+        if (audioPlayer.paused && !audioPlayer.ended && audioPlayer.readyState >= 2) {
+          audioPlayer.play().catch(err => {
+            console.log('⚠️ No se pudo reanudar automáticamente:', err.name);
+          });
+        }
+      }, 500);
+    }
+  });
 
     // Also listen for 'playing' event to ensure state is correct
     audioPlayer.addEventListener('playing', () => {
