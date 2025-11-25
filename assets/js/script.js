@@ -1227,16 +1227,23 @@ document.addEventListener('DOMContentLoaded', () => {
             audioPlayer.muted = false;
           }
           
-          // Esperar a que el stream esté listo si no lo está
+          // Esperar a que el stream esté listo si no lo está (con timeout)
           if (audioPlayer.readyState < 2) {
             console.log('⏳ Esperando a que el stream esté listo...');
             await new Promise((resolve) => {
+              let attempts = 0;
+              const maxAttempts = 50; // 5 segundos máximo (50 * 100ms)
               const checkReady = () => {
+                attempts++;
                 if (audioPlayer.readyState >= 2) {
+                  resolve();
+                } else if (attempts >= maxAttempts) {
+                  // Timeout - intentar reproducir de todas formas
+                  console.log('⚠️ Timeout esperando readyState, intentando reproducir...');
                   resolve();
                 } else if (audioPlayer.readyState === 0 && audioPlayer.networkState === 3) {
                   // No hay datos, esperar un poco más
-                  setTimeout(checkReady, 500);
+                  setTimeout(checkReady, 200);
                 } else {
                   setTimeout(checkReady, 100);
                 }
