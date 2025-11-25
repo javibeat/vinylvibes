@@ -1297,9 +1297,6 @@ document.addEventListener('DOMContentLoaded', () => {
       customPlayBtn.classList.add('playing');
     });
 
-  // Variable para rastrear si el usuario pausó manualmente
-  let userPaused = false;
-  
   audioPlayer.addEventListener('pause', () => {
     console.log('⏸️ Pause event fired');
     console.log(`📊 Pause - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Ended: ${audioPlayer.ended}`);
