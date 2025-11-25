@@ -1,104 +1,23 @@
 [Info] Successfully preconnected to https://radio.vinylvibesradio.com/
-[Log] 🎯 Initial station: Deep House (ID: deep) (script.js, line 754)
-[Log] 📡 Loading stream... (script.js, line 980)
+[Log] 🎯 Initial station: Deep House (ID: deep) (script.js, line 759)
+[Log] 📡 Loading stream... (script.js, line 985)
 [Log] ✅ Service Worker registrado (vinylvibesradio.com, line 103)
 [Log] 🔄 Nueva versión del Service Worker encontrada (vinylvibesradio.com, line 125)
+[Log] 🔗 Setting audio source to: https://radio.vinylvibesradio.com/deep320 (script.js, line 565)
+[Log] ✅ Switched to Deep House - 320 kbps (script.js, line 671)
+[Log] 📡 Loading stream... (script.js, line 985)
+[Log] ⏸️ Stream loaded, waiting for user to click play (script.js, line 657)
+[Log] 📡 Loading stream... (script.js, line 985)
 [Log] ✅ Nueva versión del Service Worker activada (vinylvibesradio.com, line 129)
-[Log] 🔗 Setting audio source to: https://radio.vinylvibesradio.com/deep320 (script.js, line 560)
-[Log] ✅ Switched to Deep House - 320 kbps (script.js, line 666)
-[Log] 📡 Loading stream... (script.js, line 980)
-[Error] Failed to load resource: the server responded with a status of 404 () (deep320, line 0)
-[Error] ❌ Stream error detected
-	(función anónima) (script.js:811)
-[Error] Error code: – 4
-	(función anónima) (script.js:812)
-[Error] Error message: – ""
-	(función anónima) (script.js:813)
-[Error] Current URL: – "https://radio.vinylvibesradio.com/deep320"
-	(función anónima) (script.js:814)
-[Error] Network state: – 3
-	(función anónima) (script.js:815)
-[Error] Ready state: – 0
-	(función anónima) (script.js:816)
-[Log] ⏸️ Stream loaded, waiting for user to click play (script.js, line 652)
-[Log] 📡 Loading stream... (script.js, line 980)
-[Error] Failed to load resource: the server responded with a status of 404 () (deep320, line 0)
-[Error] ❌ Stream error detected
-	(función anónima) (script.js:811)
-[Error] Error code: – 4
-	(función anónima) (script.js:812)
-[Error] Error message: – ""
-	(función anónima) (script.js:813)
-[Error] Current URL: – "https://radio.vinylvibesradio.com/deep320"
-	(función anónima) (script.js:814)
-[Error] Network state: – 3
-	(función anónima) (script.js:815)
-[Error] Ready state: – 0
-	(función anónima) (script.js:816)
-[Log] 🖱️ Click detected on: House (ID: house) (script.js, line 685)
-[Log] 🔗 Setting audio source to: https://radio.vinylvibesradio.com/house320 (script.js, line 560)
-[Log] ✅ Switched to House - 320 kbps (script.js, line 666)
-[Log] 📡 Loading stream... (script.js, line 980, x2)
-[Log] ▶️ Attempting to auto-play... (script.js, line 608)
-[Log] ⏳ Waiting event fired - buffer agotado (script.js, line 903)
-[Log] 📊 Waiting - ReadyState: 1, NetworkState: 2 (script.js, line 904)
-[Log] 🖱️ Click detected on: Deep House (ID: deep) (script.js, line 685)
-[Log] 🔗 Setting audio source to: https://radio.vinylvibesradio.com/deep320 (script.js, line 560)
-[Log] ✅ Switched to Deep House - 320 kbps (script.js, line 666)
-[Warning] ⚠️ Auto-play prevented: – "AbortError" – "The operation was aborted." (script.js, line 618)
-[Log] 📡 Loading stream... (script.js, line 980, x2)
-[Log] ▶️ Attempting to auto-play... (script.js, line 608)
-[Log] ⏳ Waiting event fired - buffer agotado (script.js, line 903)
-[Log] 📊 Waiting - ReadyState: 1, NetworkState: 2 (script.js, line 904)
-[Log] ▶️ Attempting to auto-play... (script.js, line 608)
-[Log] ✅ Stream ready to play (script.js, line 1149)
-[Log] 📊 ReadyState: 4, NetworkState: 2 (script.js, line 1150)
-[Log] 🎵 Playing event fired - audio is actually playing (script.js, line 1331)
-[Log] ✅ Auto-play successful (script.js, line 612)
-[Log] ✅ Stream fully loaded (script.js, line 1165)
-[Log] ✅ Auto-play successful (script.js, line 612, x6)
-[Log] ⚠️ Buffer crítico durante reproducción: 0.37s - ReadyState: 4, NetworkState: 2 (script.js, line 372)
-[Log] ⚠️ Buffer crítico durante reproducción: -0.54s - ReadyState: 4, NetworkState: 2 (script.js, line 372)
-[Log] ⏸️ Pause event fired (script.js, line 1301)
-[Log] 📊 Pause - ReadyState: 4, NetworkState: 2, Ended: true (script.js, line 1302)
-[Log] 🔘 Play/Pause button clicked (script.js, line 1183)
-[Log] 📊 Audio state - paused: true, src: https://radio.vinylvibesradio.com/deep320 (script.js, line 1184)
-[Log] ▶️ Attempting to play stream... (script.js, line 1211)
-[Log] 📊 ReadyState: 4, NetworkState: 2, Volume: 1 (script.js, line 1212)
-[Log] 🎵 Playing event fired - audio is actually playing (script.js, line 1331)
-[Log] ✅ Audio playing successfully (script.js, line 1250)
-[Log] ⚠️ Buffer crítico durante reproducción: 0.39s - ReadyState: 4, NetworkState: 2 (script.js, line 372)
-[Log] ⚠️ Buffer crítico durante reproducción: -0.43s - ReadyState: 4, NetworkState: 2 (script.js, line 372)
-[Log] ⏸️ Pause event fired (script.js, line 1301)
-[Log] 📊 Pause - ReadyState: 4, NetworkState: 2, Ended: true (script.js, line 1302)
-[Log] 🖱️ Click detected on: Jackin House (ID: jackin) (script.js, line 685)
-[Log] 🔗 Setting audio source to: https://radio.vinylvibesradio.com/jackin320 (script.js, line 560)
-[Log] ✅ Switched to Jackin House - 320 kbps (script.js, line 666)
-[Log] 📡 Loading stream... (script.js, line 980)
-[Error] Failed to load resource: the server responded with a status of 404 () (jackin320, line 0)
-[Error] ❌ Stream error detected
-	(función anónima) (script.js:811)
-[Error] Error code: – 4
-	(función anónima) (script.js:812)
-[Error] Error message: – ""
-	(función anónima) (script.js:813)
-[Error] Current URL: – "https://radio.vinylvibesradio.com/jackin320"
-	(función anónima) (script.js:814)
-[Error] Network state: – 3
-	(función anónima) (script.js:815)
-[Error] Ready state: – 0
-	(función anónima) (script.js:816)
-[Log] 📡 Loading stream... (script.js, line 980)
-[Error] Failed to load resource: the server responded with a status of 404 () (jackin320, line 0)
-[Error] ❌ Stream error detected
-	(función anónima) (script.js:811)
-[Error] Error code: – 4
-	(función anónima) (script.js:812)
-[Error] Error message: – ""
-	(función anónima) (script.js:813)
-[Error] Current URL: – "https://radio.vinylvibesradio.com/jackin320"
-	(función anónima) (script.js:814)
-[Error] Network state: – 3
-	(función anónima) (script.js:815)
-[Error] Ready state: – 0
-	(función anónima) (script.js:816)
+[Log] ✅ Stream ready to play (script.js, line 1154)
+[Log] 📊 ReadyState: 4, NetworkState: 2 (script.js, line 1155)
+[Log] ✅ Stream fully loaded (script.js, line 1170)
+[Log] 🔘 Play/Pause button clicked (script.js, line 1188)
+[Log] 📊 Audio state - paused: true, src: https://radio.vinylvibesradio.com/deep320 (script.js, line 1189)
+[Log] ▶️ Attempting to play stream... (script.js, line 1216)
+[Log] 📊 ReadyState: 4, NetworkState: 2, Volume: 1 (script.js, line 1217)
+[Log] 🎵 Playing event fired - audio is actually playing (script.js, line 1392)
+[Log] ✅ Audio playing successfully (script.js, line 1255)
+[Log] ⚠️ Buffer crítico durante reproducción: 0.42s - ReadyState: 4, NetworkState: 2 (script.js, line 375)
+[Log] ⏸️ Pause event fired (script.js, line 1312)
+[Log] 📊 Pause - ReadyState: 4, NetworkState: 2, Ended: true (script.js, line 1313)

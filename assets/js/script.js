@@ -564,14 +564,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set the source directly
     console.log(`🔗 Setting audio source to: ${streamUrl}`);
     
-    // Configure audio player for optimal streaming - ULTRA OPTIMIZADO
-    audioPlayer.preload = 'auto';
-    // Aumentar buffer del navegador (si está disponible)
-    if (audioPlayer.buffered && audioPlayer.buffered.length > 0) {
-      // Forzar pre-buffering antes de cambiar de fuente
-      audioPlayer.load();
-    }
+    // Configure audio player for optimal streaming
+    // Para streams, usar 'none' o 'metadata' es mejor que 'auto'
+    audioPlayer.preload = 'metadata';
     
+    // Limpiar fuente anterior antes de establecer nueva
+    audioPlayer.src = '';
+    audioPlayer.load();
+    
+    // Establecer nueva fuente
     audioPlayer.src = streamUrl;
     
     // Load the stream immediately
@@ -1317,10 +1318,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
     const wasUserPause = timeSinceLastInteraction < 1000; // Si hubo interacción en el último segundo, fue el usuario
     
-    // Si el stream terminó, no intentar reanudar
+    // Si el stream terminó prematuramente (no fue pausa del usuario), reconectar
     if (audioPlayer.ended) {
-      userPaused = false;
-      autoResumeAttempts = 0; // Reset contador cuando termina
+      const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
+      const wasUserPause = timeSinceLastInteraction < 1000;
+      
+      // Si no fue pausa del usuario y el stream terminó, probablemente fue cancelado por Cloudflare
+      if (!wasUserPause && audioPlayer.src && !isReconnecting) {
+        console.log('⚠️ Stream terminó prematuramente, probablemente cancelado por Cloudflare. Reconectando...');
+        userPaused = false;
+        autoResumeAttempts = 0;
+        
+        // Esperar un momento antes de reconectar
+        setTimeout(() => {
+          if (audioPlayer.ended && !isReconnecting && audioPlayer.src) {
+            attemptReconnection();
+          }
+        }, 2000);
+        return;
+      }
+      
+      // Si fue pausa del usuario, no hacer nada
+      userPaused = wasUserPause;
+      autoResumeAttempts = 0;
       return;
     }
     
@@ -1393,6 +1413,27 @@ document.addEventListener('DOMContentLoaded', () => {
       customPlayBtn.classList.add('playing');
       // Reset contador cuando realmente está reproduciéndose
       autoResumeAttempts = 0;
+    });
+
+    // Detectar cuando el stream termina prematuramente (probablemente cancelado por Cloudflare)
+    audioPlayer.addEventListener('ended', () => {
+      const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
+      const wasUserPause = timeSinceLastInteraction < 1000;
+      
+      // Si no fue pausa del usuario y el stream terminó, probablemente fue cancelado por Cloudflare
+      if (!wasUserPause && audioPlayer.src && !isReconnecting && !userPaused) {
+        console.log('⚠️ Stream terminó prematuramente (probablemente cancelado por Cloudflare). Reconectando...');
+        userPaused = false;
+        autoResumeAttempts = 0;
+        
+        // Esperar un momento antes de reconectar
+        setTimeout(() => {
+          if (audioPlayer.ended && !isReconnecting && audioPlayer.src && !userPaused) {
+            console.log('🔄 Intentando reconectar stream...');
+            attemptReconnection();
+          }
+        }, 2000);
+      }
     });
   }
 
