@@ -1170,11 +1170,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const volumeSlider = document.getElementById('volumeSlider');
   const volumeIcon = document.getElementById('volumeIcon');
 
+  // Variable para rastrear si el usuario pausó manualmente (definida antes del handler)
+  let userPaused = false;
+  
   // Play/Pause button handler
   if (customPlayBtn && audioPlayer) {
     customPlayBtn.addEventListener('click', async () => {
       // Registrar interacción del usuario
       window.lastUserInteraction = Date.now();
+      userPaused = false; // Reset cuando el usuario interactúa
       
       console.log('🔘 Play/Pause button clicked');
       console.log(`📊 Audio state - paused: ${audioPlayer.paused}, src: ${audioPlayer.src}`);
@@ -1280,6 +1284,8 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         // Audio is playing, pause it
         console.log('⏸️ Pausing audio...');
+        userPaused = true; // Marcar como pausa del usuario
+        window.lastUserInteraction = Date.now(); // Actualizar tiempo de interacción
         audioPlayer.pause();
         console.log('✅ Audio paused');
       }
@@ -1291,23 +1297,35 @@ document.addEventListener('DOMContentLoaded', () => {
       customPlayBtn.classList.add('playing');
     });
 
+  // Variable para rastrear si el usuario pausó manualmente
+  let userPaused = false;
+  
   audioPlayer.addEventListener('pause', () => {
     console.log('⏸️ Pause event fired');
     console.log(`📊 Pause - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Ended: ${audioPlayer.ended}`);
     customPlayBtn.classList.remove('playing');
     
-    // Si se pausó inesperadamente (no por el usuario), intentar reanudar
+    // Verificar si fue pausa del usuario o automática del navegador
     const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
-    if (timeSinceLastInteraction > 2000 && !audioPlayer.ended && audioPlayer.readyState >= 2) {
-      // No ha habido interacción del usuario en 2 segundos y el stream está listo
-      console.log('🔄 Audio pausado inesperadamente, intentando reanudar...');
+    const wasUserPause = timeSinceLastInteraction < 1000; // Si hubo interacción en el último segundo, fue el usuario
+    
+    if (!wasUserPause && !audioPlayer.ended && audioPlayer.readyState >= 2 && audioPlayer.networkState === 2) {
+      // Pausa automática del navegador (probablemente por buffer bajo)
+      console.log('🔄 Audio pausado automáticamente por navegador, intentando reanudar...');
+      userPaused = false;
+      
+      // Esperar un momento para que el buffer se recupere
       setTimeout(() => {
-        if (audioPlayer.paused && !audioPlayer.ended && audioPlayer.readyState >= 2) {
+        if (audioPlayer.paused && !audioPlayer.ended && audioPlayer.readyState >= 2 && !userPaused) {
           audioPlayer.play().catch(err => {
-            console.log('⚠️ No se pudo reanudar automáticamente:', err.name);
+            if (err.name !== 'NotAllowedError') {
+              console.log('⚠️ No se pudo reanudar automáticamente:', err.name);
+            }
           });
         }
-      }, 500);
+      }, 1000); // Esperar 1 segundo para que el buffer se recupere
+    } else {
+      userPaused = wasUserPause;
     }
   });
 
