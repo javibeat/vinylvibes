@@ -1170,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const volumeSlider = document.getElementById('volumeSlider');
   const volumeIcon = document.getElementById('volumeIcon');
 
-  // Variable para rastrear si el usuario pausó manualmente (definida antes del handler)
+  // Variable para rastrear si el usuario pausó manualmente
   let userPaused = false;
   
   // Play/Pause button handler
