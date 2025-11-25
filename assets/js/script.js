@@ -368,8 +368,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const bufferAhead = bufferedEnd - currentTime;
         
         // Log detallado si el buffer es muy bajo mientras está reproduciéndose
+        // Solo loggear cada 5 segundos para evitar spam en consola
         if (bufferAhead < 1 && !audioPlayer.paused) {
-          console.log(`⚠️ Buffer crítico durante reproducción: ${bufferAhead.toFixed(2)}s - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}`);
+          const now = Date.now();
+          if (!window.lastBufferWarning || (now - window.lastBufferWarning) > 5000) {
+            console.log(`⚠️ Buffer crítico durante reproducción: ${bufferAhead.toFixed(2)}s - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}`);
+            window.lastBufferWarning = now;
+          }
         }
 
         // Buffer monitoring - solo monitorear, NUNCA reconectar por buffer bajo
@@ -1297,6 +1302,12 @@ document.addEventListener('DOMContentLoaded', () => {
       customPlayBtn.classList.add('playing');
     });
 
+  // Contador para evitar bucles infinitos de reanudación
+  let autoResumeAttempts = 0;
+  let lastAutoResumeTime = 0;
+  const MAX_AUTO_RESUME_ATTEMPTS = 3;
+  const AUTO_RESUME_COOLDOWN = 5000; // 5 segundos entre intentos
+
   audioPlayer.addEventListener('pause', () => {
     console.log('⏸️ Pause event fired');
     console.log(`📊 Pause - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Ended: ${audioPlayer.ended}`);
@@ -1306,23 +1317,73 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
     const wasUserPause = timeSinceLastInteraction < 1000; // Si hubo interacción en el último segundo, fue el usuario
     
-    if (!wasUserPause && !audioPlayer.ended && audioPlayer.readyState >= 2 && audioPlayer.networkState === 2) {
-      // Pausa automática del navegador (probablemente por buffer bajo)
-      console.log('🔄 Audio pausado automáticamente por navegador, intentando reanudar...');
+    // Si el stream terminó, no intentar reanudar
+    if (audioPlayer.ended) {
       userPaused = false;
+      autoResumeAttempts = 0; // Reset contador cuando termina
+      return;
+    }
+    
+    if (!wasUserPause && !audioPlayer.ended && audioPlayer.readyState >= 2 && audioPlayer.networkState === 2) {
+      // Verificar buffer antes de intentar reanudar
+      let bufferAhead = 0;
+      if (audioPlayer.buffered.length > 0) {
+        const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+        bufferAhead = bufferedEnd - audioPlayer.currentTime;
+      }
       
-      // Esperar un momento para que el buffer se recupere
-      setTimeout(() => {
-        if (audioPlayer.paused && !audioPlayer.ended && audioPlayer.readyState >= 2 && !userPaused) {
-          audioPlayer.play().catch(err => {
-            if (err.name !== 'NotAllowedError') {
-              console.log('⚠️ No se pudo reanudar automáticamente:', err.name);
-            }
-          });
+      // Solo intentar reanudar si:
+      // 1. Hay buffer suficiente (> 2 segundos)
+      // 2. No hemos excedido el número máximo de intentos
+      // 3. Ha pasado suficiente tiempo desde el último intento
+      const timeSinceLastResume = Date.now() - lastAutoResumeTime;
+      const shouldAttemptResume = bufferAhead > 2 && 
+                                   autoResumeAttempts < MAX_AUTO_RESUME_ATTEMPTS &&
+                                   timeSinceLastResume > AUTO_RESUME_COOLDOWN;
+      
+      if (shouldAttemptResume) {
+        console.log(`🔄 Audio pausado automáticamente, buffer: ${bufferAhead.toFixed(2)}s, intentando reanudar (intento ${autoResumeAttempts + 1}/${MAX_AUTO_RESUME_ATTEMPTS})...`);
+        userPaused = false;
+        autoResumeAttempts++;
+        lastAutoResumeTime = Date.now();
+        
+        // Esperar un momento para que el buffer se recupere más
+        setTimeout(() => {
+          // Verificar buffer nuevamente antes de reanudar
+          let currentBuffer = 0;
+          if (audioPlayer.buffered.length > 0) {
+            const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+            currentBuffer = bufferedEnd - audioPlayer.currentTime;
+          }
+          
+          if (audioPlayer.paused && !audioPlayer.ended && audioPlayer.readyState >= 2 && 
+              !userPaused && currentBuffer > 1) {
+            audioPlayer.play().then(() => {
+              console.log('✅ Reanudación automática exitosa');
+              autoResumeAttempts = 0; // Reset contador en éxito
+            }).catch(err => {
+              if (err.name !== 'NotAllowedError') {
+                console.log(`⚠️ No se pudo reanudar automáticamente: ${err.name}`);
+              }
+            });
+          } else {
+            console.log(`⚠️ Buffer insuficiente para reanudar: ${currentBuffer.toFixed(2)}s`);
+          }
+        }, 2000); // Esperar 2 segundos para que el buffer se recupere
+      } else {
+        if (bufferAhead <= 2) {
+          console.log(`⚠️ Buffer muy bajo (${bufferAhead.toFixed(2)}s), no se intentará reanudar automáticamente`);
         }
-      }, 1000); // Esperar 1 segundo para que el buffer se recupere
+        if (autoResumeAttempts >= MAX_AUTO_RESUME_ATTEMPTS) {
+          console.log('⚠️ Máximo de intentos de reanudación alcanzado, esperando interacción del usuario');
+        }
+      }
     } else {
       userPaused = wasUserPause;
+      // Reset contador cuando el usuario pausa manualmente
+      if (wasUserPause) {
+        autoResumeAttempts = 0;
+      }
     }
   });
 
@@ -1330,6 +1391,8 @@ document.addEventListener('DOMContentLoaded', () => {
     audioPlayer.addEventListener('playing', () => {
       console.log('🎵 Playing event fired - audio is actually playing');
       customPlayBtn.classList.add('playing');
+      // Reset contador cuando realmente está reproduciéndose
+      autoResumeAttempts = 0;
     });
   }
 
