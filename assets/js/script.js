@@ -368,18 +368,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const bufferAhead = bufferedEnd - currentTime;
 
         // Buffer mínimo aumentado a 10 segundos para evitar cortes
-        // Si el buffer es menor a 10 segundos, activar pre-buffering suave
+        // Si el buffer es menor a 10 segundos, solo monitorear - NO reconectar automáticamente
         if (bufferAhead < 10 && bufferAhead > 0) {
-          // Solo loggear si es realmente crítico (< 3s)
-          if (bufferAhead < 3) {
-            console.log(`⚠️ Buffer crítico: ${bufferAhead.toFixed(1)}s - Intentando recuperar...`);
-            
-            // NO pausar el audio - solo intentar forzar más buffer
-            // Si el buffer es muy bajo (< 2s), intentar reconexión
-            if (bufferAhead < 2 && !isReconnecting) {
-              console.log('🔄 Buffer muy bajo, intentando reconexión...');
-              attemptReconnection();
-            }
+          // Solo loggear si es realmente crítico (< 1s) - pero NO reconectar
+          // La reconexión solo debe ocurrir cuando hay un error real, no por buffer bajo
+          if (bufferAhead < 1) {
+            console.log(`⚠️ Buffer muy bajo: ${bufferAhead.toFixed(1)}s - Monitoreando...`);
+            // NO reconectar - dejar que el stream se recupere naturalmente
+            // Solo si el audio se detiene completamente (ended) o hay error real, entonces reconectar
           }
         }
 
@@ -466,29 +462,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
       console.log(`🔄 Intento de reconexión ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
 
-      // Try to reload the stream
+      // Try to reload the stream - pero de forma más suave
       const currentSrc = audioPlayer.src;
       if (currentSrc) {
-        // Force reload by temporarily clearing and resetting
-        audioPlayer.load();
-        
-        // Try to play after a short delay
-        setTimeout(() => {
-          if (!audioPlayer.paused) {
-            audioPlayer.play().then(() => {
-              console.log('✅ Reconexión exitosa');
-              isReconnecting = false;
-              reconnectAttempts = 0;
-              updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
-            }).catch(err => {
-              console.warn('⚠️ Error al reproducir después de reconexión:', err);
-              // Will retry on next interval if still having issues
-              isReconnecting = false;
-            });
-          } else {
+        // NO hacer load() inmediatamente - esto puede causar errores
+        // En su lugar, solo intentar play() si está pausado, o esperar a que se recupere
+        if (audioPlayer.paused) {
+          // Si está pausado, intentar reproducir
+          audioPlayer.play().then(() => {
+            console.log('✅ Reconexión exitosa');
             isReconnecting = false;
-          }
-        }, 500);
+            reconnectAttempts = 0;
+            updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
+          }).catch(err => {
+            // Si falla, intentar recargar el stream
+            audioPlayer.load();
+            setTimeout(() => {
+              if (!audioPlayer.paused) {
+                audioPlayer.play().then(() => {
+                  console.log('✅ Reconexión exitosa después de reload');
+                  isReconnecting = false;
+                  reconnectAttempts = 0;
+                }).catch(() => {
+                  isReconnecting = false;
+                });
+              } else {
+                isReconnecting = false;
+              }
+            }, 1000);
+          });
+        } else {
+          // Si está reproduciéndose, solo esperar a que se recupere
+          // No hacer nada agresivo que pueda interrumpir
+          isReconnecting = false;
+        }
       } else {
         // No source, try to switch station again
         if (currentStation) {
@@ -788,9 +795,14 @@ document.addEventListener('DOMContentLoaded', () => {
         case MediaError.MEDIA_ERR_NETWORK:
           errorMessage = 'Network error - Reconectando automáticamente...';
           updatePlayerDisplay(stationName, 'Network Error', errorMessage);
-          console.warn('⚠️ Media error: Network');
+          // Intentar reconexión solo si no está ya reconectando
           if (currentUrl && !isReconnecting) {
-            attemptReconnection();
+            // Esperar un momento antes de reconectar
+            setTimeout(() => {
+              if (!isReconnecting) {
+                attemptReconnection();
+              }
+            }, 2000);
           }
           break;
         case MediaError.MEDIA_ERR_DECODE:
@@ -799,18 +811,17 @@ document.addEventListener('DOMContentLoaded', () => {
           console.warn('⚠️ Media error: Decode');
           break;
         case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
-          errorMessage = 'Stream unavailable or format not supported';
-          updatePlayerDisplay(stationName, 'Unavailable', errorMessage);
-          console.warn('⚠️ Media error: Source not supported (Code 4)');
-          console.warn('💡 Possible causes:');
-          console.warn('   1. Stream is not running on the server');
-          console.warn('   2. CORS is not enabled (server must allow cross-origin requests)');
-          console.warn('   3. URL is incorrect or server is not accessible');
-          console.warn('   4. Stream URL is incorrect or not accessible');
-          console.warn(`📋 Test URL directly: ${currentUrl}`);
-          console.warn('🔧 Server should have CORS headers:');
-          console.warn('   Access-Control-Allow-Origin: *');
-          console.warn('   Access-Control-Allow-Methods: GET, POST, OPTIONS');
+          errorMessage = 'Stream unavailable - Intentando reconectar...';
+          updatePlayerDisplay(stationName, 'Reconectando...', errorMessage);
+          // Intentar reconexión solo si no está ya reconectando
+          if (currentUrl && !isReconnecting) {
+            // Esperar un momento antes de reconectar para evitar loops
+            setTimeout(() => {
+              if (!isReconnecting) {
+                attemptReconnection();
+              }
+            }, 2000);
+          }
           break;
         default:
           errorMessage = 'Unknown error - Check console for details';
