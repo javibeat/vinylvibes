@@ -504,7 +504,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Improved reconnection function
-  function attemptReconnection() {
+  function attemptReconnection(options = {}) {
+    const { forceReload = false } = options;
     if (isReconnecting || audioPlayer.paused) return;
     if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       console.error('❌ Máximo de intentos de reconexión alcanzado');
@@ -539,12 +540,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
           log(`🔄 Intento de reconexión ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
 
-      // Cuando Cloudflare cancela, el stream está "ended" - necesitamos recargarlo completamente
+      const needsFullReload = forceReload || audioPlayer.ended || audioPlayer.readyState <= 1;
+
+      // Cuando Cloudflare cancela o el readyState se queda en 1, recargarlo completamente
       const currentSrc = audioPlayer.src;
       if (currentSrc) {
-        // Si el stream terminó (ended), recargarlo completamente
-        if (audioPlayer.ended) {
-          log('🔄 Stream cancelado por Cloudflare, recargando completamente...');
+        if (needsFullReload) {
+          log('🔄 Stream cancelado/estancado, recargando completamente...');
           // Limpiar y recargar el stream
           audioPlayer.src = '';
           audioPlayer.load();
@@ -1015,45 +1017,38 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('⏳ Waiting event fired - buffer agotado');
     console.log(`📊 Waiting - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}`);
     
-    // Only show buffering message if not paused by user
     if (audioPlayer.paused) return;
 
     const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
     updatePlayerDisplay(stationName, 'Buffering...', 'Cargando stream...');
 
-    // Clear any stalled timeout
     if (stalledTimeout) {
       clearTimeout(stalledTimeout);
     }
 
-    // If waiting for more than 10 seconds, try to recover (aumentado de 5s a 10s)
     stalledTimeout = setTimeout(() => {
       if (audioPlayer.paused || !audioPlayer.src) return;
 
-      // Check if we're really stalled
-      if (audioPlayer.readyState < 2 && audioPlayer.networkState === 3) {
-        // Solo si realmente no hay fuente (networkState 3) y no hay datos (readyState < 2)
-        console.warn('⚠️ Stream stalled, attempting recovery...');
-        // Try to reload solo si realmente está estancado
-        audioPlayer.load();
-        if (!audioPlayer.paused) {
-          setTimeout(() => {
-            audioPlayer.play().catch(() => {
-              // If play fails, try reconnection solo si no está ya reconectando
-              if (!isReconnecting) {
-                attemptReconnection();
-              }
-            });
-          }, 1000);
-        }
-      } else if (audioPlayer.readyState >= 2) {
-        // Stream is ready, just try to play
-        audioPlayer.play().catch(() => {
-          // Play might be blocked, that's OK
-        });
+      let bufferAhead = 0;
+      if (audioPlayer.buffered.length > 0) {
+        const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+        bufferAhead = bufferedEnd - audioPlayer.currentTime;
       }
-      // Si readyState >= 1 pero < 2, esperar más - el stream está cargando
-    }, 10000); // Aumentado a 10 segundos
+
+      const shouldForceReload = audioPlayer.readyState <= 1 || bufferAhead < 1;
+      const shouldRetryPlay = audioPlayer.readyState >= 2 && bufferAhead >= 1;
+
+      if (shouldForceReload) {
+        console.warn(`⚠️ Buffer agotado (readyState ${audioPlayer.readyState}, buffer ${bufferAhead.toFixed(2)}s). Forzando reconexión...`);
+        if (!isReconnecting) {
+          attemptReconnection({ forceReload: true });
+        }
+      } else if (shouldRetryPlay) {
+        audioPlayer.play().catch(() => {});
+      } else if (!isReconnecting) {
+        attemptReconnection();
+      }
+    }, 3000);
   });
 
   // Optimized buffer handling - monitor buffer health
