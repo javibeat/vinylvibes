@@ -1,7 +1,8 @@
 // Service Worker para Vinyl Vibes Radio
 // Proporciona funcionalidad offline y caché de recursos
 
-const CACHE_NAME = 'vinyl-vibes-radio-v3';
+// Bump cache name to force clients to pick the updated SW that bypasses streams
+const CACHE_NAME = 'vinyl-vibes-radio-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -71,6 +72,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // Nunca interceptar audio ni peticiones a otros orígenes (ej. Icecast)
+  // para evitar cancelaciones o respuestas cacheadas.
+  if (request.destination === 'audio' || url.hostname === 'radio.vinylvibesradio.com' || url.origin !== self.location.origin) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // No cachear streams de audio (siempre usar red)
   if (url.pathname.includes('.mp3') || url.hostname.includes('stream.')) {
@@ -192,4 +200,3 @@ self.addEventListener('message', (event) => {
     );
   }
 });
-

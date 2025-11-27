@@ -626,6 +626,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const mountName = button.getAttribute('data-mount');
     const stationName = button.querySelector('.station-name').textContent;
     const streamUrl = buildStreamUrl(baseUrl, mountName, currentQuality);
+    // Añadimos un parámetro único para evitar cualquier caché intermedia (Cloudflare)
+    const liveStreamUrl = `${streamUrl}?live=${Date.now()}`;
 
     // Reset reconnection state
     reconnectAttempts = 0;
@@ -662,20 +664,15 @@ document.addEventListener('DOMContentLoaded', () => {
     currentBaseUrl = baseUrl;
 
     // Set the source directly
-    log(`🔗 Setting audio source to: ${streamUrl}`);
+    log(`🔗 Setting audio source to: ${liveStreamUrl}`);
     
-    // Configure audio player for optimal streaming
-    // Para streams, usar 'none' es mejor para carga más rápida
-    audioPlayer.preload = 'none';
-    
-    // Limpiar fuente anterior antes de establecer nueva
-    audioPlayer.src = '';
-    audioPlayer.load();
-    
-    // Establecer nueva fuente inmediatamente
-    audioPlayer.src = streamUrl;
-    
-    // Load the stream immediately (sin setTimeout para carga más rápida)
+    // Configure audio player for stable streaming (cargar enseguida y sin resets extra)
+    audioPlayer.preload = 'auto';
+
+    // Establecer nueva fuente directamente sin limpiar dos veces (evita cortes tempranos)
+    audioPlayer.src = liveStreamUrl;
+
+    // Load the stream immediately
     updatePlayerDisplay(stationName, 'Loading...', `Quality: ${currentQuality} kbps`);
     audioPlayer.load();
 
