@@ -74,6 +74,9 @@
 
   <!-- Service Worker Registration -->
   <script>
+    // Desactivar Service Worker temporalmente para evitar cualquier bloqueo/caché del stream
+    const ENABLE_SW = false;
+
     // Detectar iOS/Safari
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
@@ -92,7 +95,7 @@
     }
     
     // En iOS, el Service Worker puede causar problemas, así que lo registramos de forma más segura
-    if ('serviceWorker' in navigator) {
+    if (ENABLE_SW && 'serviceWorker' in navigator) {
       // En iOS, esperar más tiempo antes de registrar el SW y hacerlo opcional
       const delay = isIOS ? 3000 : 0;
       
