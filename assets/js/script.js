@@ -376,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
         const currentTime = audioPlayer.currentTime;
         const bufferAhead = bufferedEnd - currentTime;
-        
+
         // Log detallado si el buffer es muy bajo mientras está reproduciéndose
         // Solo loggear cada 5 segundos para evitar spam en consola
         if (bufferAhead < 1 && !audioPlayer.paused) {
@@ -399,7 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Track buffer time for network quality detection
         lastBufferTime = bufferAhead;
-        
+
         // Actualizar último tiempo de reproducción para heartbeat
         if (!audioPlayer.paused && audioPlayer.currentTime > 0) {
           lastPlayTime = Date.now();
@@ -416,12 +416,12 @@ document.addEventListener('DOMContentLoaded', () => {
           attemptReconnection();
         }
       }
-      
+
       // Verificar si el audio se detuvo inesperadamente (más agresivo)
       if (!audioPlayer.paused && audioPlayer.ended) {
         const playDuration = Date.now() - (window.streamStartTime || Date.now());
-        log(`🔄 Stream ended inesperadamente después de ${(playDuration/1000).toFixed(1)}s, recargando...`);
-        
+        log(`🔄 Stream ended inesperadamente después de ${(playDuration / 1000).toFixed(1)}s, recargando...`);
+
         // Si el stream terminó muy rápido (< 10s), probablemente es Cloudflare
         if (playDuration < 10000 && !isReconnecting) {
           logWarn('⚠️ Stream cancelado muy rápido, probablemente Cloudflare. Reconectando...');
@@ -431,12 +431,12 @@ document.addEventListener('DOMContentLoaded', () => {
           audioPlayer.load();
           setTimeout(() => {
             if (!audioPlayer.paused && !isReconnecting) {
-              audioPlayer.play().catch(() => {});
+              audioPlayer.play().catch(() => { });
             }
           }, 500);
         }
       }
-      
+
       // Verificar si el audio está pausado pero debería estar reproduciéndose
       if (audioPlayer.paused && audioPlayer.readyState >= 2 && bufferAhead > 3) {
         // El buffer es bueno pero está pausado - puede ser un problema
@@ -478,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const currentTime = audioPlayer.currentTime;
       const now = Date.now();
       const timeSinceLastPlay = now - lastPlayTime;
-      
+
       // Si el currentTime no ha avanzado en 2 segundos y no hay buffer, probablemente Cloudflare canceló
       // Reducido de 3s a 2s para detectar cancelaciones más rápido
       if (timeSinceLastPlay > 2000 && currentTime > 0) {
@@ -488,14 +488,14 @@ document.addEventListener('DOMContentLoaded', () => {
           const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
           bufferAhead = bufferedEnd - currentTime;
         }
-        
+
         // Si no hay buffer y el tiempo no avanza, probablemente Cloudflare canceló
         if (bufferAhead < 0.5 && audioPlayer.readyState < 3 && !audioPlayer.ended) {
           logWarn('⚠️ Heartbeat: Stream parece estar congelado (Cloudflare?). Reconectando...');
           attemptReconnection();
         }
       }
-      
+
       // Actualizar lastPlayTime si el stream está avanzando
       if (currentTime > 0 && !audioPlayer.ended) {
         lastPlayTime = now;
@@ -538,77 +538,59 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-          log(`🔄 Intento de reconexión ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
+      log(`🔄 Intento de reconexión ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
 
       const needsFullReload = forceReload || audioPlayer.ended || audioPlayer.readyState <= 1;
 
-      // Cuando Cloudflare cancela o el readyState se queda en 1, recargarlo completamente
+      // Si el stream está estancado, intentar solo load() sin clear src
       const currentSrc = audioPlayer.src;
-      if (currentSrc) {
-        if (needsFullReload) {
-          log('🔄 Stream cancelado/estancado, recargando completamente...');
-          // Limpiar y recargar el stream
-          audioPlayer.src = '';
-          audioPlayer.load();
-          
-          // Establecer la fuente nuevamente
-          setTimeout(() => {
-            audioPlayer.src = currentSrc;
-            audioPlayer.load();
-            
-            // Intentar reproducir después de que el stream esté listo
-            const tryPlay = () => {
-              if (audioPlayer.readyState >= 1) {
-                audioPlayer.play().then(() => {
-                  log('✅ Reconexión exitosa después de recarga completa');
-                  isReconnecting = false;
-                  reconnectAttempts = 0;
-                  updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
-                }).catch(() => {
-                  isReconnecting = false;
-                });
-              } else {
-                // Esperar un poco más
-                setTimeout(tryPlay, 200);
-              }
-            };
-            
-            // Intentar reproducir después de 500ms
-            setTimeout(tryPlay, 500);
-          }, 100);
-        } else if (audioPlayer.paused) {
-          // Si está pausado pero no terminado, intentar reproducir
-          audioPlayer.play().then(() => {
-            log('✅ Reconexión exitosa');
+      if (currentSrc && needsFullReload) {
+        log('🔄 Stream estancado, intentando recargar...');
+
+        // Solo recargar sin borrar src
+        audioPlayer.load();
+
+        // Esperar un momento y reintentar play
+        setTimeout(() => {
+          if (audioPlayer.readyState >= 2 && audioPlayer.paused) {
+            audioPlayer.play().then(() => {
+              log('✅ Reconexión exitosa');
+              isReconnecting = false;
+              reconnectAttempts = 0;
+              updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
+            }).catch(() => {
+              isReconnecting = false;
+            });
+          } else {
             isReconnecting = false;
-            reconnectAttempts = 0;
-            updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
-          }).catch(() => {
-            // Si falla, recargar el stream
-            audioPlayer.load();
-            setTimeout(() => {
-              if (!audioPlayer.paused) {
-                audioPlayer.play().then(() => {
-                  log('✅ Reconexión exitosa después de reload');
-                  isReconnecting = false;
-                  reconnectAttempts = 0;
-                }).catch(() => {
-                  isReconnecting = false;
-                });
-              } else {
-                isReconnecting = false;
-              }
-            }, 1000);
-          });
-        } else {
-          // Si está reproduciéndose, solo esperar a que se recupere
+          }
+        }, 1000);
+      } else if (audioPlayer.paused) {
+        // Si está pausado pero no terminado, intentar reproducir
+        audioPlayer.play().then(() => {
+          log('✅ Reconexión exitosa');
           isReconnecting = false;
-        }
+          reconnectAttempts = 0;
+          updatePlayerDisplay(stationName, 'Playing', `Quality: ${currentQuality} kbps`);
+        }).catch(() => {
+          // Si falla, recargar el stream
+          audioPlayer.load();
+          setTimeout(() => {
+            if (!audioPlayer.paused) {
+              audioPlayer.play().then(() => {
+                log('✅ Reconexión exitosa después de reload');
+                isReconnecting = false;
+                reconnectAttempts = 0;
+              }).catch(() => {
+                isReconnecting = false;
+              });
+            } else {
+              isReconnecting = false;
+            }
+          }, 1000);
+        });
       } else {
-        // No source, try to switch station again
-        if (currentStation) {
-          switchStation(currentStation, true);
-        }
+        // Si está reproduciéndose, solo esperar a que se recupere
         isReconnecting = false;
       }
     }, delay);
@@ -665,7 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Set the source directly
     log(`🔗 Setting audio source to: ${liveStreamUrl}`);
-    
+
     // Configure audio player for stable streaming (cargar enseguida y sin resets extra)
     audioPlayer.preload = 'auto';
 
@@ -702,27 +684,27 @@ document.addEventListener('DOMContentLoaded', () => {
       const attemptPlay = () => {
         if (playAttempted && audioPlayer.readyState < 2) return;
 
-          if (audioPlayer.readyState >= 1) {
+        if (audioPlayer.readyState >= 1) {
+          clearLoadingTimeout();
+          if (!playAttempted) {
+            playAttempted = true;
+            log(`▶️ Attempting to auto-play...`);
+          }
+
+          audioPlayer.play().then(() => {
+            log('✅ Auto-play successful');
+            reconnectAttempts = 0; // Reset on successful play
             clearLoadingTimeout();
-            if (!playAttempted) {
-              playAttempted = true;
-              log(`▶️ Attempting to auto-play...`);
+          }).catch(err => {
+            clearLoadingTimeout();
+            if (err.name !== 'NotAllowedError') {
+              logWarn('⚠️ Auto-play prevented:', err.name, err.message);
+            } else {
+              log('⚠️ Auto-play requires user interaction');
             }
-            
-            audioPlayer.play().then(() => {
-              log('✅ Auto-play successful');
-              reconnectAttempts = 0; // Reset on successful play
-              clearLoadingTimeout();
-            }).catch(err => {
-              clearLoadingTimeout();
-              if (err.name !== 'NotAllowedError') {
-                logWarn('⚠️ Auto-play prevented:', err.name, err.message);
-              } else {
-                log('⚠️ Auto-play requires user interaction');
-              }
-              updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
-              playAttempted = false; // Allow retry
-            });
+            updatePlayerDisplay(stationName, 'Ready', 'Click play to start');
+            playAttempted = false; // Allow retry
+          });
         } else {
           // Stream not ready yet, wait a bit more
           setTimeout(attemptPlay, 100);
@@ -750,7 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
           updatePlayerDisplay(stationName, 'Ready', `Quality: ${currentQuality} kbps - Click play`);
         }, { once: true });
       });
-        log(`⏸️ Stream loaded, waiting for user to click play`);
+      log(`⏸️ Stream loaded, waiting for user to click play`);
     }
 
     // Track info will be updated via metadata events
@@ -965,7 +947,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Improved error handling - use the new attemptReconnection function
+  // Audio error handler with smart reconnection
   audioPlayer.addEventListener('error', (e) => {
     const error = audioPlayer.error;
     if (error && error.code === MediaError.MEDIA_ERR_NETWORK && !isReconnecting) {
@@ -974,46 +956,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-    // Reset reconnection flag when stream starts playing successfully
-    audioPlayer.addEventListener('playing', () => {
-      // Registrar tiempo de inicio del stream para diagnosticar cancelaciones
-      window.streamStartTime = Date.now();
-      
-      if (isReconnecting) {
-        console.log('✅ Stream reconnected successfully');
-        isReconnecting = false;
-        reconnectAttempts = 0; // Reset attempts on successful play
-        networkQuality = 'good';
-        if (reconnectTimeout) {
-          clearTimeout(reconnectTimeout);
-          reconnectTimeout = null;
-        }
+  // Reset reconnection flag when stream starts playing successfully
+  audioPlayer.addEventListener('playing', () => {
+    // Registrar tiempo de inicio del stream para diagnosticar cancelaciones
+    window.streamStartTime = Date.now();
+
+    if (isReconnecting) {
+      console.log('✅ Stream reconnected successfully');
+      isReconnecting = false;
+      reconnectAttempts = 0; // Reset attempts on successful play
+      networkQuality = 'good';
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = null;
       }
-      
-      // Clear stalled timeout when playing
-      if (stalledTimeout) {
-        clearTimeout(stalledTimeout);
-        stalledTimeout = null;
-      }
-      
-      // Ensure buffer monitoring is running
-      if (!bufferCheckInterval) {
-        startBufferMonitoring();
-      }
-      
-      // Start heartbeat monitoring
-      if (!heartbeatInterval) {
-        startHeartbeatMonitoring();
-      }
-      
-      // Actualizar lastPlayTime cuando empieza a reproducir
-      lastPlayTime = Date.now();
-    });
+    }
+
+    // Clear stalled timeout when playing
+    if (stalledTimeout) {
+      clearTimeout(stalledTimeout);
+      stalledTimeout = null;
+    }
+
+    // Ensure buffer monitoring is running
+    if (!bufferCheckInterval) {
+      startBufferMonitoring();
+    }
+
+    // Start heartbeat monitoring
+    if (!heartbeatInterval) {
+      startHeartbeatMonitoring();
+    }
+
+    // Actualizar lastPlayTime cuando empieza a reproducir
+    lastPlayTime = Date.now();
+  });
 
   audioPlayer.addEventListener('waiting', () => {
     console.log('⏳ Waiting event fired - buffer agotado');
     console.log(`📊 Waiting - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}`);
-    
+
     if (audioPlayer.paused) return;
 
     const stationName = currentStationDisplay ? currentStationDisplay.textContent : 'Deep House';
@@ -1041,14 +1023,14 @@ document.addEventListener('DOMContentLoaded', () => {
           attemptReconnection({ forceReload: true });
         }
       } else if (shouldRetryPlay) {
-        audioPlayer.play().catch(() => {});
+        audioPlayer.play().catch(() => { });
       } else if (!isReconnecting) {
         attemptReconnection();
       }
     }, 3000);
   });
 
-  // Optimized buffer handling - monitor buffer health
+  // Optimized buffer handling - monitor buffer health passively
   audioPlayer.addEventListener('progress', () => {
     // Stream is downloading data - check buffer health
     if (audioPlayer.buffered.length > 0) {
@@ -1065,12 +1047,8 @@ document.addEventListener('DOMContentLoaded', () => {
         networkQuality = 'offline';
       }
 
-      // If buffer is healthy (> 5 seconds), ensure playback continues
-      if (bufferAhead > 5 && audioPlayer.paused && !audioPlayer.ended && !isReconnecting) {
-        audioPlayer.play().catch(() => {
-          // Play might be blocked, that's OK
-        });
-      }
+      // DON'T auto-play here - it can interrupt smooth playback
+      // Let the stream manage itself
 
       // Clear stalled timeout if buffer is good
       if (bufferAhead > 3 && stalledTimeout) {
@@ -1276,14 +1254,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Variable para rastrear si el usuario pausó manualmente
   let userPaused = false;
-  
+
   // Play/Pause button handler
   if (customPlayBtn && audioPlayer) {
     customPlayBtn.addEventListener('click', async () => {
       // Registrar interacción del usuario
       window.lastUserInteraction = Date.now();
       userPaused = false; // Reset cuando el usuario interactúa
-      
+
       console.log('🔘 Play/Pause button clicked');
       console.log(`📊 Audio state - paused: ${audioPlayer.paused}, src: ${audioPlayer.src}`);
 
@@ -1314,17 +1292,17 @@ document.addEventListener('DOMContentLoaded', () => {
           // Stream is loaded, try to play
           console.log('▶️ Attempting to play stream...');
           console.log(`📊 ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Volume: ${audioPlayer.volume}`);
-          
+
           // Asegurar que el volumen no sea 0
           if (audioPlayer.volume === 0 && volumeSlider) {
             audioPlayer.volume = volumeSlider.value / 100 || 0.8;
           }
-          
+
           // Asegurar que no esté silenciado
           if (audioPlayer.muted) {
             audioPlayer.muted = false;
           }
-          
+
           // Esperar a que el stream esté listo si no lo está (con timeout)
           if (audioPlayer.readyState < 2) {
             console.log('⏳ Esperando a que el stream esté listo...');
@@ -1349,14 +1327,14 @@ document.addEventListener('DOMContentLoaded', () => {
               checkReady();
             });
           }
-          
+
           try {
             // Asegurarse de que no se esté cargando mientras se intenta reproducir
             if (audioPlayer.networkState === 1) {
               // NETWORK_LOADING - esperar un momento
               await new Promise(resolve => setTimeout(resolve, 200));
             }
-            
+
             await audioPlayer.play();
             console.log('✅ Audio playing successfully');
             updatePlayerDisplay(
@@ -1369,7 +1347,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (err.name !== 'NotAllowedError' && err.name !== 'AbortError') {
               console.warn('⚠️ Play prevented:', err.name, err.message);
             }
-            
+
             // Si es AbortError, intentar de nuevo después de un momento
             if (err.name === 'AbortError') {
               console.log('🔄 AbortError detectado, reintentando en 500ms...');
@@ -1408,108 +1386,108 @@ document.addEventListener('DOMContentLoaded', () => {
       customPlayBtn.classList.add('playing');
     });
 
-  // Contador para evitar bucles infinitos de reanudación
-  let autoResumeAttempts = 0;
-  let lastAutoResumeTime = 0;
-  const MAX_AUTO_RESUME_ATTEMPTS = 3;
-  const AUTO_RESUME_COOLDOWN = 5000; // 5 segundos entre intentos
+    // Contador para evitar bucles infinitos de reanudación
+    let autoResumeAttempts = 0;
+    let lastAutoResumeTime = 0;
+    const MAX_AUTO_RESUME_ATTEMPTS = 3;
+    const AUTO_RESUME_COOLDOWN = 5000; // 5 segundos entre intentos
 
-  audioPlayer.addEventListener('pause', () => {
-    console.log('⏸️ Pause event fired');
-    console.log(`📊 Pause - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Ended: ${audioPlayer.ended}`);
-    customPlayBtn.classList.remove('playing');
-    
-    // Verificar si fue pausa del usuario o automática del navegador
-    const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
-    const wasUserPause = timeSinceLastInteraction < 1000; // Si hubo interacción en el último segundo, fue el usuario
-    
-    // Si el stream terminó prematuramente (no fue pausa del usuario), reconectar
-    if (audioPlayer.ended) {
+    audioPlayer.addEventListener('pause', () => {
+      console.log('⏸️ Pause event fired');
+      console.log(`📊 Pause - ReadyState: ${audioPlayer.readyState}, NetworkState: ${audioPlayer.networkState}, Ended: ${audioPlayer.ended}`);
+      customPlayBtn.classList.remove('playing');
+
+      // Verificar si fue pausa del usuario o automática del navegador
       const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
-      const wasUserPause = timeSinceLastInteraction < 1000;
-      
-      // Si no fue pausa del usuario y el stream terminó, probablemente fue cancelado por Cloudflare
-      if (!wasUserPause && audioPlayer.src && !isReconnecting) {
-        const playDuration = Date.now() - (window.streamStartTime || Date.now());
-        console.log(`⚠️ Stream terminó prematuramente después de ${(playDuration/1000).toFixed(1)}s, probablemente cancelado por Cloudflare. Reconectando...`);
-        userPaused = false;
-        autoResumeAttempts = 0;
-        
-        // Reconectar INMEDIATAMENTE (sin delay para respuesta instantánea)
-        if (audioPlayer.ended && !isReconnecting && audioPlayer.src) {
-          attemptReconnection();
+      const wasUserPause = timeSinceLastInteraction < 1000; // Si hubo interacción en el último segundo, fue el usuario
+
+      // Si el stream terminó prematuramente (no fue pausa del usuario), reconectar
+      if (audioPlayer.ended) {
+        const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
+        const wasUserPause = timeSinceLastInteraction < 1000;
+
+        // Si no fue pausa del usuario y el stream terminó, probablemente fue cancelado por Cloudflare
+        if (!wasUserPause && audioPlayer.src && !isReconnecting) {
+          const playDuration = Date.now() - (window.streamStartTime || Date.now());
+          console.log(`⚠️ Stream terminó prematuramente después de ${(playDuration / 1000).toFixed(1)}s, probablemente cancelado por Cloudflare. Reconectando...`);
+          userPaused = false;
+          autoResumeAttempts = 0;
+
+          // Reconectar INMEDIATAMENTE (sin delay para respuesta instantánea)
+          if (audioPlayer.ended && !isReconnecting && audioPlayer.src) {
+            attemptReconnection();
+          }
+          return;
         }
+
+        // Si fue pausa del usuario, no hacer nada
+        userPaused = wasUserPause;
+        autoResumeAttempts = 0;
         return;
       }
-      
-      // Si fue pausa del usuario, no hacer nada
-      userPaused = wasUserPause;
-      autoResumeAttempts = 0;
-      return;
-    }
-    
-    if (!wasUserPause && !audioPlayer.ended && audioPlayer.readyState >= 2 && audioPlayer.networkState === 2) {
-      // Verificar buffer antes de intentar reanudar
-      let bufferAhead = 0;
-      if (audioPlayer.buffered.length > 0) {
-        const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
-        bufferAhead = bufferedEnd - audioPlayer.currentTime;
-      }
-      
-      // Solo intentar reanudar si:
-      // 1. Hay buffer suficiente (> 2 segundos)
-      // 2. No hemos excedido el número máximo de intentos
-      // 3. Ha pasado suficiente tiempo desde el último intento
-      const timeSinceLastResume = Date.now() - lastAutoResumeTime;
-      const shouldAttemptResume = bufferAhead > 2 && 
-                                   autoResumeAttempts < MAX_AUTO_RESUME_ATTEMPTS &&
-                                   timeSinceLastResume > AUTO_RESUME_COOLDOWN;
-      
-      if (shouldAttemptResume) {
-        console.log(`🔄 Audio pausado automáticamente, buffer: ${bufferAhead.toFixed(2)}s, intentando reanudar (intento ${autoResumeAttempts + 1}/${MAX_AUTO_RESUME_ATTEMPTS})...`);
-        userPaused = false;
-        autoResumeAttempts++;
-        lastAutoResumeTime = Date.now();
-        
-        // Esperar un momento para que el buffer se recupere más
-        setTimeout(() => {
-          // Verificar buffer nuevamente antes de reanudar
-          let currentBuffer = 0;
-          if (audioPlayer.buffered.length > 0) {
-            const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
-            currentBuffer = bufferedEnd - audioPlayer.currentTime;
-          }
-          
-          if (audioPlayer.paused && !audioPlayer.ended && audioPlayer.readyState >= 2 && 
+
+      if (!wasUserPause && !audioPlayer.ended && audioPlayer.readyState >= 2 && audioPlayer.networkState === 2) {
+        // Verificar buffer antes de intentar reanudar
+        let bufferAhead = 0;
+        if (audioPlayer.buffered.length > 0) {
+          const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+          bufferAhead = bufferedEnd - audioPlayer.currentTime;
+        }
+
+        // Solo intentar reanudar si:
+        // 1. Hay buffer suficiente (> 2 segundos)
+        // 2. No hemos excedido el número máximo de intentos
+        // 3. Ha pasado suficiente tiempo desde el último intento
+        const timeSinceLastResume = Date.now() - lastAutoResumeTime;
+        const shouldAttemptResume = bufferAhead > 2 &&
+          autoResumeAttempts < MAX_AUTO_RESUME_ATTEMPTS &&
+          timeSinceLastResume > AUTO_RESUME_COOLDOWN;
+
+        if (shouldAttemptResume) {
+          console.log(`🔄 Audio pausado automáticamente, buffer: ${bufferAhead.toFixed(2)}s, intentando reanudar (intento ${autoResumeAttempts + 1}/${MAX_AUTO_RESUME_ATTEMPTS})...`);
+          userPaused = false;
+          autoResumeAttempts++;
+          lastAutoResumeTime = Date.now();
+
+          // Esperar un momento para que el buffer se recupere más
+          setTimeout(() => {
+            // Verificar buffer nuevamente antes de reanudar
+            let currentBuffer = 0;
+            if (audioPlayer.buffered.length > 0) {
+              const bufferedEnd = audioPlayer.buffered.end(audioPlayer.buffered.length - 1);
+              currentBuffer = bufferedEnd - audioPlayer.currentTime;
+            }
+
+            if (audioPlayer.paused && !audioPlayer.ended && audioPlayer.readyState >= 2 &&
               !userPaused && currentBuffer > 1) {
-            audioPlayer.play().then(() => {
-              console.log('✅ Reanudación automática exitosa');
-              autoResumeAttempts = 0; // Reset contador en éxito
-            }).catch(err => {
-              if (err.name !== 'NotAllowedError') {
-                console.log(`⚠️ No se pudo reanudar automáticamente: ${err.name}`);
-              }
-            });
-          } else {
-            console.log(`⚠️ Buffer insuficiente para reanudar: ${currentBuffer.toFixed(2)}s`);
+              audioPlayer.play().then(() => {
+                console.log('✅ Reanudación automática exitosa');
+                autoResumeAttempts = 0; // Reset contador en éxito
+              }).catch(err => {
+                if (err.name !== 'NotAllowedError') {
+                  console.log(`⚠️ No se pudo reanudar automáticamente: ${err.name}`);
+                }
+              });
+            } else {
+              console.log(`⚠️ Buffer insuficiente para reanudar: ${currentBuffer.toFixed(2)}s`);
+            }
+          }, 2000); // Esperar 2 segundos para que el buffer se recupere
+        } else {
+          if (bufferAhead <= 2) {
+            console.log(`⚠️ Buffer muy bajo (${bufferAhead.toFixed(2)}s), no se intentará reanudar automáticamente`);
           }
-        }, 2000); // Esperar 2 segundos para que el buffer se recupere
+          if (autoResumeAttempts >= MAX_AUTO_RESUME_ATTEMPTS) {
+            console.log('⚠️ Máximo de intentos de reanudación alcanzado, esperando interacción del usuario');
+          }
+        }
       } else {
-        if (bufferAhead <= 2) {
-          console.log(`⚠️ Buffer muy bajo (${bufferAhead.toFixed(2)}s), no se intentará reanudar automáticamente`);
-        }
-        if (autoResumeAttempts >= MAX_AUTO_RESUME_ATTEMPTS) {
-          console.log('⚠️ Máximo de intentos de reanudación alcanzado, esperando interacción del usuario');
+        userPaused = wasUserPause;
+        // Reset contador cuando el usuario pausa manualmente
+        if (wasUserPause) {
+          autoResumeAttempts = 0;
         }
       }
-    } else {
-      userPaused = wasUserPause;
-      // Reset contador cuando el usuario pausa manualmente
-      if (wasUserPause) {
-        autoResumeAttempts = 0;
-      }
-    }
-  });
+    });
 
     // Also listen for 'playing' event to ensure state is correct
     audioPlayer.addEventListener('playing', () => {
@@ -1523,14 +1501,14 @@ document.addEventListener('DOMContentLoaded', () => {
     audioPlayer.addEventListener('ended', () => {
       const timeSinceLastInteraction = Date.now() - (window.lastUserInteraction || 0);
       const wasUserPause = timeSinceLastInteraction < 1000;
-      
+
       // Si no fue pausa del usuario y el stream terminó, probablemente fue cancelado por Cloudflare
       if (!wasUserPause && audioPlayer.src && !isReconnecting && !userPaused) {
         const playDuration = Date.now() - (window.streamStartTime || Date.now());
-        console.log(`⚠️ Stream terminó prematuramente después de ${(playDuration/1000).toFixed(1)}s (probablemente cancelado por Cloudflare). Reconectando...`);
+        console.log(`⚠️ Stream terminó prematuramente después de ${(playDuration / 1000).toFixed(1)}s (probablemente cancelado por Cloudflare). Reconectando...`);
         userPaused = false;
         autoResumeAttempts = 0;
-        
+
         // Reconectar INMEDIATAMENTE (sin delay para respuesta instantánea)
         if (audioPlayer.ended && !isReconnecting && audioPlayer.src && !userPaused) {
           log('🔄 Intentando reconectar stream inmediatamente...');
